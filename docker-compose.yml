@@ -1,0 +1,50 @@
+services:
+
+  # Control Plane
+  control-plane:
+    build:
+      context: .
+      dockerfile: control-plane/Dockerfile
+    container_name: governor-control-plane
+    ports:
+      - "50051:50051"
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: litellm-proxy
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./config.yaml:/app/config.yaml
+      - ./providers.json:/app/providers.json
+      - ./litellm-hook/custom_hooks.py:/app/custom_hooks.py
+      - ./protos/generated/interceptor_pb2.py:/app/interceptor_pb2.py
+      - ./protos/generated/interceptor_pb2_grpc.py:/app/interceptor_pb2_grpc.py
+    environment:
+      - DATABASE_URL=postgresql://llmproxy:${LITELLM_DB_PASSWORD}@litellm-db:5432/litellm
+    env_file:
+      - .env
+    command: [ "--config=/app/config.yaml" ]
+    depends_on:
+      litellm-db:
+        condition: service_healthy
+
+  litellm-db:
+    image: postgres:16-alpine
+    container_name: litellm-db
+    environment:
+      POSTGRES_USER: llmproxy
+      POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD} #from .env
+      POSTGRES_DB: litellm
+    env_file:
+      - .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U llmproxy -d litellm"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

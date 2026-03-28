@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+// Questo è il servizio che il nostro Control Plane esporrà
+service ContextService {
+  // Unary RPC: Il client (LiteLLM) invia una richiesta, il server (Control Plane) risponde
+  rpc MutateContext (ContextRequest) returns (ContextResponse);
+}
+
+// I dati che LiteLLM invierà al Control Plane
+message ContextRequest {
+  string trace_id = 1;         // Un ID univoco per tracciare la richiesta
+  string model = 2;            // Il modello richiesto (es. claude-3)
+  string raw_json_payload = 3; // Il payload grezzo catturato da LiteLLM
+  map<string, string> metadata = 4; // Eventuali dati extra utili
+}
+
+// La risposta che il Control Plane rimanderà a LiteLLM
+message ContextResponse {
+  enum Action {
+    PROCEED = 0; // Lascia passare la richiesta originale senza modifiche
+    MUTATED = 1; // La richiesta è stata modificata (il nostro caso d'uso iniziale)
+    REJECT = 2;  // Blocca la richiesta
+  }
+  Action action = 1;
+  string modified_json_payload = 2; // Il payload modificato da reinserire in LiteLLM
+}
