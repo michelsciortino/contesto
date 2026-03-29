@@ -1,13 +1,17 @@
-FROM python:3.13-slim
-
+FROM python:3.11-slim
+ 
 WORKDIR /app
-COPY ./control-plane/requirements.txt .
+COPY control-plane/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-COPY ./protos/generated/* .
-COPY ./control-plane/*.py .
-
-# Expose the gRPC server port
-EXPOSE 50051
-
-CMD ["python", "server.py"]
+ 
+# Copy proto-generated stubs so they are baked into the image
+COPY protos/generated/interceptor_pb2.py .
+COPY protos/generated/interceptor_pb2_grpc.py .
+ 
+COPY control-plane/app/ ./app/
+COPY control-plane/migrations/ ./migrations/
+COPY control-plane/alembic.ini .
+ 
+EXPOSE 50051 8080
+ 
+CMD ["python", "-m", "app.main"]

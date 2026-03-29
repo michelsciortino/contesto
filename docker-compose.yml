@@ -6,8 +6,44 @@ services:
       context: .
       dockerfile: control-plane/Dockerfile
     container_name: governor-control-plane
+    volumes:
+      - ./control-plane/app:/app/app:ro
     ports:
       - "50051:50051"
+      - "8080:8080"
+    env_file:
+      - .env
+    depends_on:
+      governor-db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  governor-db:
+    image: postgres:16-alpine
+    container_name: governor-db
+    environment:
+      POSTGRES_USER: governor
+      POSTGRES_PASSWORD: ${GOVERNOR_DB_PASSWORD}
+      POSTGRES_DB: governor
+    env_file:
+      - .env
+    volumes:
+      - governor_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U governor -d governor"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: governor-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
 
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
@@ -34,7 +70,7 @@ services:
     container_name: litellm-db
     environment:
       POSTGRES_USER: llmproxy
-      POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD} #from .env
+      POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD}
       POSTGRES_DB: litellm
     env_file:
       - .env
@@ -48,3 +84,5 @@ services:
 
 volumes:
   postgres_data:
+  governor_postgres_data:
+  redis_data:
