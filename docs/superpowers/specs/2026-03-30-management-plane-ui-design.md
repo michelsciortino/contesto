@@ -127,10 +127,11 @@ The server sends two event types as newline-delimited JSON:
 ```
 
 **Connection lifecycle:**
-- On mount: connect, send no handshake (server accepts immediately)
-- On `trace` event: append to local trace ring buffer (max 200 entries), update per-agent stats
-- On `status` event: update recording state and health indicators
+- On mount: connect, send no handshake (server accepts immediately). Guard against React StrictMode double-mount: store the socket in a `useRef` and close the previous socket before opening a new one.
+- On `trace` event: append to local trace ring buffer (max 200 **trace** events — status pings are not counted). Buffer persists across reconnects; it is never reset on disconnect.
+- On `status` event: update recording state and health indicators in a separate atom. Initialize recording button state from the first `status` event received after connect.
 - On disconnect: show "WS Disconnected" pill, retry with exponential backoff (1s → 2s → 4s → max 30s)
+- Stat card totals (Intercepted, Mutated, Tokens Saved, Rejected) are derived from the buffer contents, not accumulated from events, so counts are consistent after reconnect.
 
 ---
 
@@ -152,7 +153,12 @@ for each incoming trace T:
     record spawn(parent=agent, childPrompt=tool_use.input.prompt, at=T.recorded_at)
 ```
 
-Agent identity within a session is inferred heuristically: traces whose `messages` array starts fresh (no prior assistant turns) are treated as new agent invocations.
+**Agent identity heuristic:** A trace starts a new agent invocation if its `messages` array contains **no assistant-role messages**. Continuation traces (same agent, later turns) will have at least one `role: "assistant"` message. The agent key is `{model}-{session_id}-{first_trace_id_prefix}` for new invocations, and `{model}-{session_id}-cont` for continuations; all continuation traces within a session are grouped under the same agent.
+
+**AgentNode variant rules:**
+- `orchestrator` — the root node of a session (no `parentId`)
+- `leaf` — spawned by a parent but has zero calls of its own yet
+- `subagent` — spawned by a parent and has at least one call
 
 ---
 
@@ -164,9 +170,10 @@ Agent identity within a session is inferred heuristically: traces whose `message
 
 **Components:**
 - **Topbar:** "Governor › Live View" breadcrumb, WS status pill (green pulsing dot when connected), Recording button (inactive = "▶ Start Recording" / active = "⬛ Stop · MM:SS" pulsing red).
-- **Stat cards (4):** Intercepted, Mutated, Tokens Saved (estimated as sum of `original_payload` token count minus `final_payload` token count), Rejected. All scoped to the current or most recent recording session.
-- **Trace table:** Blueprint `HTMLTable`, columns: Trace ID (truncated, cyan, clickable), Action badge, Model tag, Context Weight bar (fill colour green/amber/red based on % of model context window; max from `lib/tokens.ts`), Rules Matched chips, Time. Rows flash cyan on arrival. Capped at 50 rows, newest first.
-- **Sessions panel (right):** List of recording sessions from `/recordings`. Active session shown first with pulsing REC badge.
+- **Stat cards (4):** Intercepted, Mutated, Tokens Saved, Rejected. All scoped to the ring buffer contents. Tokens Saved is computed client-side using the §8 character/4 heuristic: `sum(estimateTokens(original_payload) - estimateTokens(final_payload))` for traces where `action == "MUTATED"`. The stat label reads "~Est. Saved" to signal approximation.
+- **Empty state:** Before any traces arrive, the table shows a single row with "No traces received yet". Stat cards show 0.
+- **Trace table:** Blueprint `HTMLTable`, columns: Trace ID (truncated, cyan, clickable), Action badge, Model tag, Context Weight bar (fill colour green/amber/red based on % of model context window; max from `lib/tokens.ts`), Rules Matched chips, Time. Rows flash cyan on arrival (single CSS animation, ~600ms, plays once and stops). Capped at 50 rows, newest first.
+- **Sessions panel (right):** List of recording sessions from `/recordings`. Active session shown first with pulsing REC badge. Clicking a session navigates to `/liveflow?session=<session_id>&view=timeline`. This panel uses the same `RecordingListItem` model and the same data-fetch logic as the Recordings List page (§6.5); the `SessionsPanel` component lives in `components/live/` but can be reused or import shared logic.
 
 **Interactions:**
 - Clicking a trace row opens `TraceDetailSlideOver` (see §6.6).
@@ -190,6 +197,7 @@ Agent identity within a session is inferred heuristically: traces whose `message
 - **Detail panel (right drawer, 320px):** Opens on node click. Shows: agent type/name/model, stats grid (calls, mutated, tokens saved, spawned), context window bar, spawn chain tree, list of 4 most recent traces with action badge + timestamp + link to full trace.
 - **Minimap** (bottom-right, Blueprint `Minimap`-style).
 - **Zoom controls** (bottom-centre).
+- **Empty state:** When no session is active and the ring buffer is empty, the canvas shows a centred placeholder: "No agent data. Start a recording session to see live traffic."
 
 ---
 
@@ -200,7 +208,7 @@ Agent identity within a session is inferred heuristically: traces whose `message
 **Components:**
 - **Lane labels:** One row per agent. Coloured dot, name, model, depth badge. Clicking navigates to the Agent Conversation view for that agent.
 - **Time ruler:** SVG, major ticks at 60s, minor at 15s, labels at 30s/60s.
-- **Call pills:** SVG `<rect>` or HTML `<div>` absolutely positioned. `x = time_start / total_duration * canvas_width`, `width = duration_px`. Wide pills (> 40px) show `#N ✦ 18k`; narrow show only the status mark dot.
+- **Call pills:** HTML `<div>` absolutely positioned within a horizontally scrollable container of fixed width `CANVAS_W = 1400px`. `x = (call_time_ms - session_start_ms) / total_duration_ms * CANVAS_W`, where `total_duration_ms = max(session_end_ms - session_start_ms, 60_000)` (minimum 60s so short sessions are still navigable). Each pill has a minimum rendered width of 12px so even sub-second calls are clickable. Wide pills (> 40px) show `#N ✦ 18k`; narrow show only the status mark dot. Clicking a pill opens `TraceDetailSlideOver` for that trace.
 - **Spawn curves:** SVG bezier from `(t1_parent, y_parent)` to `(t0_child, y_child)` with dashed stroke in the child lane's colour. Animated particle on session load.
 - **Live cursor:** Vertical cyan line at current time. Canvas auto-scrolls on mount to show the live cursor at 70% from the left edge.
 - **Tooltip on hover:** Agent name, call number, action badge, token count, start time, duration, spawned agent (if applicable).
@@ -216,7 +224,7 @@ Agent identity within a session is inferred heuristically: traces whose `message
 
 ### 6.4 Agent Conversation (`/liveflow/[agentId]`)
 
-**Route parameter:** `agentId` is a client-side generated identifier (e.g. `main-agent-d024e4be`) derived from agent name + session prefix. It is not persisted — navigating directly to a `/liveflow/[agentId]` URL without prior session state will show an empty view with a "Return to LiveFlow" prompt.
+**Route parameter:** `agentId` is a client-side generated identifier (e.g. `main-agent-d024e4be`) derived from agent name + session prefix. It is not persisted. On page refresh or direct navigation, the WebSocket ring buffer will be empty and the agent will not be found. In this case the page shows a centered empty state: "Agent data not available — this view requires an active session. [Return to LiveFlow]" with no auto-redirect.
 
 **Layout:** Topbar with back button → LiveFlow, agent name pill, then a vertically scrolling timeline of call rows.
 
@@ -327,7 +335,7 @@ Token count is estimated from the payload by counting characters and dividing by
 
 ## 9. REST API Client (`lib/api.ts`)
 
-Typed wrappers for all existing Control Plane endpoints. Base URL read from `NEXT_PUBLIC_API_URL` env variable (default: `http://localhost:8080`).
+Typed wrappers for all existing Control Plane endpoints. Base URL read from `NEXT_PUBLIC_API_URL` env variable (default: `http://localhost:8080`). TypeScript interfaces for all response types are defined in `lib/models.ts`.
 
 ```ts
 // Recording
@@ -335,20 +343,25 @@ startRecording(): Promise<{ session_id: string; started_at: string }>
 stopRecording(): Promise<{ session_id: string; traces_flushed: number; stopped_at: string }>
 getRecordingStatus(): Promise<{ is_active: boolean; session_id: string | null; started_at: string | null }>
 
-// Recordings
+// Recordings — returns RecordingListItem[]
+// RecordingListItem: { id, started_at, stopped_at: string|null, is_active, trace_count }
 listRecordings(): Promise<RecordingListItem[]>
 deleteRecording(sessionId: string): Promise<void>
 
-// Traces
+// Traces — TraceOut is the list shape; TraceDetailOut extends it with payloads
+// TraceOut: { id, trace_id, recording_session_id, model, action, recorded_at, session_id? }
+// TraceDetailOut: TraceOut & { original_payload, final_payload, mutation_steps }
 listTraces(params: { session_id?: string; page?: number }): Promise<TraceOut[]>
 getTrace(traceId: string): Promise<TraceDetailOut>
 
-// Rules (read-only in this iteration)
+// Rules — RuleOut: { id, name, priority, is_active, match_logic, mutate_logic, created_at, updated_at }
 listRules(): Promise<RuleOut[]>
 
 // Health
 getHealth(): Promise<{ status: string; components: { db: string; redis: string } }>
 ```
+
+All data fetching is client-side (`"use client"` components with `useEffect`). Server Components are not used for data fetching in this iteration.
 
 ---
 
@@ -380,10 +393,13 @@ CMD ["node", "server.js"]
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8080
+      - NEXT_PUBLIC_API_URL=http://control-plane:8080
+      - NEXT_PUBLIC_WS_URL=ws://control-plane:8080
     depends_on:
       - control-plane
 ```
+
+> **Note:** Use the Docker Compose service name `control-plane` (not `localhost`) so the container can resolve the address. `NEXT_PUBLIC_WS_URL` is consumed by `lib/ws.tsx` for the WebSocket connection URL.
 
 ---
 
@@ -396,9 +412,10 @@ This UI requires two additions to the Control Plane (not in the current codebase
 Add to `app/routers/` a new `ws.py` router:
 - FastAPI `WebSocket` endpoint at `/ws/live`
 - A `ConnectionManager` singleton holds a `set` of active WebSocket connections
-- `GovernorServicer` calls `await manager.broadcast(trace_event)` after each gRPC call completes
-- A background task pings `status_event` every 3 seconds to all connected clients
-- On connection, immediately send the current recording status as a `status` event
+- `GovernorServicer` enqueues trace events into an `asyncio.Queue` (module-level in `ws.py`). The `_status_ping_loop` background task also drains this queue and broadcasts events. This avoids the cross-thread `asyncio.create_task` issue that would occur if the gRPC servicer (which may run in a thread pool) called async code directly.
+- A background task emits `status_event` every 3 seconds to all connected clients. The status event includes `session_started_at` (looked up from Redis/DB when `is_recording=True`) and `elapsed_seconds` (computed as `(now - session_started_at).total_seconds()`).
+- Health checks (`SELECT 1` and `redis.ping()`) in the ping loop are gated on `len(self._connections) > 0` to avoid unnecessary load when no clients are connected.
+- On connection, immediately send the current recording status as a `status` event. No auth required in this iteration.
 
 ### 11.2 `session_id` field on `Trace` model
 

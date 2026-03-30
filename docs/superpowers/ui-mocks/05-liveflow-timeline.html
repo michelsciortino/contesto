@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Governor — Timeline View</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+  :root {
+    --bg-void:#070a0f; --bg-surface:#0c1018; --bg-raised:#111822; --bg-card:#131b24;
+    --border:rgba(255,255,255,.055); --border-hi:rgba(255,255,255,.10);
+    --cyan:#00f5ff; --green:#39ff14; --amber:#ffaa00; --red:#ff2d55;
+    --purple:#c263ff; --blue:#4d9fff; --teal:#00e5c0; --pink:#ff6ec7;
+    --cyan-bg:rgba(0,245,255,.07); --red-bg:rgba(255,45,85,.09);
+    --purple-bg:rgba(194,99,255,.09);
+    --text:#dce8f0; --text-sec:#7a93a8; --text-dim:#3d5264;
+    --mono:'JetBrains Mono',monospace; --ui:'Space Grotesk',sans-serif;
+    --sidebar-w:180px;
+    /* Agent lane colors */
+    --lane-0: #00f5ff; --lane-0-bg: rgba(0,245,255,.10);   /* orchestrator */
+    --lane-1: #c263ff; --lane-1-bg: rgba(194,99,255,.10);  /* subagent A */
+    --lane-2: #ff6ec7; --lane-2-bg: rgba(255,110,199,.10); /* subagent B */
+    --lane-3: #ffaa00; --lane-3-bg: rgba(255,170,0,.10);   /* leaf A */
+    --lane-4: #39ff14; --lane-4-bg: rgba(57,255,20,.09);   /* leaf B */
+    --lane-5: #4d9fff; --lane-5-bg: rgba(77,159,255,.09);  /* leaf C */
+    --lane-h: 54px;   /* lane height */
+    --lane-gap: 10px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg-void);color:var(--text);font-family:var(--ui);height:100vh;overflow:hidden;display:flex;flex-direction:column;}
+  body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
+    background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.02) 3px,rgba(0,0,0,.02) 4px);}
+
+  /* ── Sidebar ── */
+  .sidebar{position:fixed;top:0;left:0;width:var(--sidebar-w);height:100vh;background:var(--bg-surface);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:100;}
+  .brand{display:flex;align-items:center;gap:10px;padding:16px 16px 14px;border-bottom:1px solid var(--border);}
+  .brand-mark{width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,var(--cyan),var(--purple));display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#000;box-shadow:0 0 14px rgba(0,245,255,.35);}
+  .brand-name{font-size:14px;font-weight:700;} .brand-ver{font-size:9px;font-family:var(--mono);color:var(--text-dim);}
+  .nav-sec{font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);padding:14px 16px 5px;}
+  .nav-item{display:flex;align-items:center;gap:9px;padding:8px 14px;margin:1px 8px;border-radius:7px;cursor:pointer;color:var(--text-sec);font-size:13px;font-weight:500;transition:all .15s;position:relative;}
+  .nav-item:hover{background:rgba(255,255,255,.04);color:var(--text);}
+  .nav-item.active{background:var(--cyan-bg);color:var(--cyan);box-shadow:inset 0 0 0 1px rgba(0,245,255,.15);}
+  .nav-item.active::before{content:'';position:absolute;left:-8px;top:50%;transform:translateY(-50%);width:3px;height:18px;background:var(--cyan);border-radius:0 2px 2px 0;box-shadow:0 0 8px var(--cyan);}
+  .nav-icon{font-size:15px;width:18px;text-align:center;flex-shrink:0;}
+  .nav-badge{font-size:9px;font-family:var(--mono);padding:1px 5px;background:var(--red-bg);color:var(--red);border-radius:3px;border:1px solid rgba(255,45,85,.2);}
+  .sb-bottom{margin-top:auto;padding:12px 8px;border-top:1px solid var(--border);}
+
+  /* ── Topbar ── */
+  .topbar{margin-left:var(--sidebar-w);height:48px;background:var(--bg-surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:10px;flex-shrink:0;}
+  .back-btn{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid var(--border);background:rgba(255,255,255,.03);color:var(--text-sec);font-size:11px;font-family:var(--mono);transition:all .15s;}
+  .back-btn:hover{background:rgba(255,255,255,.06);color:var(--text);}
+  .sep{color:var(--text-dim);}
+  .agent-pill{display:flex;align-items:center;gap:7px;padding:4px 12px;border-radius:20px;background:var(--cyan-bg);border:1px solid rgba(0,245,255,.2);font-size:12px;font-weight:600;font-family:var(--mono);color:var(--cyan);}
+  .agent-dot{width:7px;height:7px;border-radius:50%;background:var(--cyan);box-shadow:0 0 6px var(--cyan);animation:blink 1.2s infinite;}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+  .topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px;}
+  .pill{display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:10px;font-weight:600;font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase;}
+  .pill-dot{width:5px;height:5px;border-radius:50%;background:currentColor;}
+  .pill.rec{background:var(--red-bg);color:var(--red);border:1px solid rgba(255,45,85,.3);animation:rec-glow 1.8s infinite;}
+  @keyframes rec-glow{0%,100%{box-shadow:0 0 8px rgba(255,45,85,.1)}50%{box-shadow:0 0 16px rgba(255,45,85,.3)}}
+
+  /* ── Toolbar ── */
+  .toolbar{margin-left:var(--sidebar-w);height:40px;background:var(--bg-raised);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:10px;flex-shrink:0;}
+  .tb-btn{display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:5px;font-size:11px;cursor:pointer;border:1px solid var(--border);background:rgba(255,255,255,.03);color:var(--text-sec);font-family:var(--mono);transition:all .15s;}
+  .tb-btn:hover{background:rgba(255,255,255,.06);color:var(--text);}
+  .tb-btn.active{background:var(--cyan-bg);color:var(--cyan);border-color:rgba(0,245,255,.2);}
+  .tb-sep{width:1px;height:20px;background:var(--border);margin:0 4px;}
+  .legend{display:flex;align-items:center;gap:14px;margin-left:auto;}
+  .leg-item{display:flex;align-items:center;gap:5px;font-size:9px;font-family:var(--mono);color:var(--text-dim);}
+  .leg-dot{width:10px;height:10px;border-radius:3px;}
+
+  /* ── Main body ── */
+  .page-body{margin-left:var(--sidebar-w);flex:1;overflow:hidden;display:flex;flex-direction:column;position:relative;}
+
+  /* ── Lane labels sidebar (left of canvas) ── */
+  .lanes-layout{flex:1;overflow:hidden;display:flex;}
+
+  .lane-labels{
+    width:140px;flex-shrink:0;
+    background:var(--bg-surface);border-right:1px solid var(--border);
+    display:flex;flex-direction:column;
+    padding-top:32px; /* align with time ruler height */
+    overflow:hidden;
+  }
+  .lane-label{
+    height:calc(var(--lane-h) + var(--lane-gap));
+    display:flex;align-items:center;
+    padding:0 12px;gap:8px;
+    border-bottom:1px solid var(--border);
+    cursor:pointer;transition:background .12s;flex-shrink:0;
+  }
+  .lane-label:hover{background:rgba(255,255,255,.025);}
+  .lane-color{width:8px;height:8px;border-radius:2px;flex-shrink:0;}
+  .lane-info{overflow:hidden;}
+  .lane-name{font-size:11px;font-weight:600;font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .lane-sub{font-size:9px;color:var(--text-dim);font-family:var(--mono);}
+
+  /* ── Timeline canvas ── */
+  .tl-canvas-wrap{
+    flex:1;overflow-x:auto;overflow-y:hidden;
+    position:relative;
+  }
+  .tl-canvas{
+    position:relative;
+    /* width set by JS, height = lanes */
+    min-width:100%;
+  }
+
+  /* Time ruler */
+  .time-ruler{
+    height:32px;position:sticky;top:0;
+    background:var(--bg-raised);border-bottom:1px solid var(--border);
+    z-index:20;
+  }
+  .ruler-svg{width:100%;height:32px;display:block;}
+
+  /* Lane rows */
+  .lane-rows{position:relative;}
+  .lane-row{
+    height:calc(var(--lane-h) + var(--lane-gap));
+    border-bottom:1px solid var(--border);
+    position:relative;
+  }
+  .lane-row:last-child{border-bottom:none;}
+  /* subtle horizontal stripe */
+  .lane-row::before{
+    content:'';position:absolute;inset:0;
+    background:linear-gradient(to bottom,rgba(255,255,255,.008),transparent);
+  }
+
+  /* SVG for spawn curves — absolute, covers all lanes */
+  .spawn-svg{
+    position:absolute;top:0;left:0;
+    width:100%;pointer-events:none;z-index:5;
+    overflow:visible;
+  }
+
+  /* ── Call pills ── */
+  .call-pill{
+    position:absolute;
+    height:32px;top:50%;transform:translateY(-50%);
+    border-radius:8px;
+    border:1px solid;
+    cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    overflow:hidden;
+    transition:filter .15s, transform .15s, box-shadow .15s;
+    z-index:10;
+    min-width:12px;
+  }
+  .call-pill:hover{
+    filter:brightness(1.25);
+    transform:translateY(-50%) scaleY(1.12);
+    z-index:15;
+  }
+  .call-pill.selected{
+    filter:brightness(1.3);
+    transform:translateY(-50%) scaleY(1.15);
+    z-index:16;
+    outline:2px solid rgba(255,255,255,.4);
+    outline-offset:1px;
+  }
+  .pill-inner{
+    padding:0 8px;
+    display:flex;align-items:center;gap:5px;
+    white-space:nowrap;overflow:hidden;
+  }
+  .pill-call-num{font-size:9px;font-family:var(--mono);font-weight:600;opacity:.7;}
+  .pill-badge{font-size:8px;font-family:var(--mono);font-weight:700;opacity:.9;}
+  .pill-tokens{font-size:8px;font-family:var(--mono);opacity:.6;}
+
+  /* Action indicators on pill */
+  .pill-mut-mark{
+    position:absolute;top:2px;right:3px;
+    width:5px;height:5px;border-radius:50%;
+    background:var(--amber);box-shadow:0 0 4px var(--amber);
+  }
+  .pill-rej-mark{
+    position:absolute;top:2px;right:3px;
+    width:5px;height:5px;border-radius:50%;
+    background:var(--red);box-shadow:0 0 4px var(--red);
+  }
+
+  /* Active / live pill */
+  .call-pill.live{animation:pill-pulse 1.4s infinite;}
+  @keyframes pill-pulse{
+    0%,100%{box-shadow:0 0 10px rgba(0,245,255,.3);}
+    50%{box-shadow:0 0 22px rgba(0,245,255,.6), 0 0 40px rgba(0,245,255,.15);}
+  }
+
+  /* Live cursor line */
+  .live-cursor{
+    position:absolute;top:0;width:2px;
+    background:linear-gradient(to bottom,var(--cyan),rgba(0,245,255,0));
+    z-index:12;pointer-events:none;
+  }
+  .live-cursor-head{
+    position:absolute;top:0;left:50%;transform:translateX(-50%);
+    width:8px;height:8px;background:var(--cyan);border-radius:50%;
+    box-shadow:0 0 10px var(--cyan);
+    animation:blink 1s infinite;
+  }
+  .live-cursor-label{
+    position:absolute;top:4px;left:10px;
+    font-size:9px;font-family:var(--mono);color:var(--cyan);
+    background:rgba(7,10,15,.85);border:1px solid rgba(0,245,255,.2);
+    padding:2px 6px;border-radius:4px;white-space:nowrap;
+  }
+
+  /* Tooltip */
+  .tooltip{
+    position:fixed;z-index:200;
+    background:var(--bg-raised);border:1px solid var(--border-hi);
+    border-radius:8px;padding:10px 12px;
+    font-family:var(--mono);font-size:10px;
+    box-shadow:0 8px 32px rgba(0,0,0,.6);
+    pointer-events:none;
+    opacity:0;transition:opacity .12s;
+    min-width:200px;
+  }
+  .tooltip.visible{opacity:1;}
+  .tt-row{display:flex;gap:8px;align-items:center;margin-bottom:5px;}
+  .tt-row:last-child{margin-bottom:0;}
+  .tt-label{color:var(--text-dim);width:72px;flex-shrink:0;}
+  .tt-val{color:var(--text);}
+  .tt-badge{padding:1px 5px;border-radius:3px;font-size:9px;font-weight:700;}
+  .tt-badge.M{background:var(--amber-bg,rgba(255,170,0,.1));color:var(--amber);}
+  .tt-badge.P{background:rgba(255,255,255,.05);color:var(--text-sec);}
+  .tt-badge.R{background:var(--red-bg);color:var(--red);}
+  .tt-badge.L{background:rgba(0,245,255,.08);color:var(--cyan);}
+  .tt-divider{height:1px;background:var(--border);margin:6px 0;}
+
+  /* Bottom time axis */
+  .time-axis{
+    height:28px;background:var(--bg-raised);border-top:1px solid var(--border);
+    display:flex;align-items:center;padding-left:140px;
+    flex-shrink:0;position:relative;
+  }
+  .axis-svg{width:100%;height:28px;display:block;}
+
+  /* Status bar */
+  .statusbar{margin-left:var(--sidebar-w);height:22px;background:var(--bg-surface);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:14px;flex-shrink:0;}
+  .sb-item{display:flex;align-items:center;gap:4px;font-size:9px;font-family:var(--mono);color:var(--text-dim);}
+  .sdot{width:5px;height:5px;border-radius:50%;}
+  .sdot.ok{background:var(--green);box-shadow:0 0 4px var(--green);}
+  .sdot.ws{background:var(--cyan);box-shadow:0 0 4px var(--cyan);animation:blink 2s infinite;}
+  .sb-right{margin-left:auto;display:flex;gap:14px;}
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<nav class="sidebar">
+  <div class="brand">
+    <div class="brand-mark">G</div>
+    <div><div class="brand-name">Governor</div><div class="brand-ver">v0.2.0</div></div>
+  </div>
+  <div class="nav-sec">Monitor</div>
+  <div class="nav-item"><span class="nav-icon">◉</span><span style="flex:1">Live View</span><span class="nav-badge">REC</span></div>
+  <div class="nav-item active"><span class="nav-icon">⬡</span><span>LiveFlow</span></div>
+  <div class="nav-item"><span class="nav-icon">◎</span><span>Recordings</span></div>
+  <div class="nav-item"><span class="nav-icon">≋</span><span>Traces</span></div>
+  <div class="nav-sec">Configure</div>
+  <div class="nav-item"><span class="nav-icon">⊞</span><span>Rules</span></div>
+  <div class="sb-bottom"><div class="nav-item"><span class="nav-icon">⚙</span><span>Settings</span></div></div>
+</nav>
+
+<!-- Topbar -->
+<header class="topbar">
+  <div class="back-btn">← LiveFlow</div>
+  <span class="sep">›</span>
+  <div class="agent-pill"><div class="agent-dot"></div>session d024e4be · LIVE</div>
+  <div style="font-size:11px;color:var(--text-dim);font-family:var(--mono)">5 agents · 96 total calls</div>
+  <div class="topbar-right">
+    <div class="pill rec"><div class="pill-dot"></div>Recording · 03:47</div>
+  </div>
+</header>
+
+<!-- Toolbar -->
+<div class="toolbar">
+  <div class="tb-btn">⬡ Hierarchy</div>
+  <div class="tb-btn active">⏱ Timeline</div>
+  <div class="tb-sep"></div>
+  <div class="tb-btn">⊕ Zoom in</div>
+  <div class="tb-btn">⊖ Zoom out</div>
+  <div class="tb-btn">⊡ Fit</div>
+  <div class="tb-sep"></div>
+  <div class="tb-btn active">↗ Show spawn lines</div>
+  <div class="tb-btn">Filter: All agents</div>
+  <!-- Legend -->
+  <div class="legend">
+    <div class="leg-item"><div class="leg-dot" style="background:var(--amber);border-radius:50%"></div>Mutated</div>
+    <div class="leg-item"><div class="leg-dot" style="background:var(--red);border-radius:50%"></div>Rejected</div>
+    <div class="leg-item"><svg width="22" height="10"><line x1="0" y1="5" x2="22" y2="5" stroke="rgba(255,255,255,.3)" stroke-width="1" stroke-dasharray="3 2"/></svg>Spawn</div>
+  </div>
+</div>
+
+<!-- Main -->
+<div class="page-body">
+  <div class="lanes-layout">
+
+    <!-- Lane labels -->
+    <div class="lane-labels" id="laneLabels"></div>
+
+    <!-- Timeline canvas -->
+    <div class="tl-canvas-wrap" id="canvasWrap">
+      <div class="tl-canvas" id="tlCanvas">
+        <!-- time ruler -->
+        <div class="time-ruler"><svg class="ruler-svg" id="rulerSvg"></svg></div>
+        <!-- lane rows -->
+        <div class="lane-rows" id="laneRows"></div>
+        <!-- spawn curves SVG -->
+        <svg class="spawn-svg" id="spawnSvg"></svg>
+        <!-- live cursor -->
+        <div class="live-cursor" id="liveCursor">
+          <div class="live-cursor-head"></div>
+          <div class="live-cursor-label" id="liveLabel">03:47</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer class="statusbar">
+  <div class="sb-item"><div class="sdot ok"></div>DB</div>
+  <div class="sb-item"><div class="sdot ws"></div>WebSocket</div>
+  <div class="sb-item">session d024e4be · 5 agents · 96 calls</div>
+  <div class="sb-right"><div class="sb-item">ws://localhost:8080/ws/live</div></div>
+</footer>
+
+<!-- Tooltip -->
+<div class="tooltip" id="tooltip">
+  <div class="tt-row"><span class="tt-label">Agent</span><span class="tt-val" id="tt-agent">—</span></div>
+  <div class="tt-row"><span class="tt-label">Call</span><span class="tt-val" id="tt-call">—</span></div>
+  <div class="tt-row"><span class="tt-label">Action</span><span class="tt-badge" id="tt-action">—</span></div>
+  <div class="tt-divider"></div>
+  <div class="tt-row"><span class="tt-label">Tokens</span><span class="tt-val" id="tt-tokens">—</span></div>
+  <div class="tt-row"><span class="tt-label">Time</span><span class="tt-val" id="tt-time">—</span></div>
+  <div class="tt-row"><span class="tt-label">Duration</span><span class="tt-val" id="tt-dur">—</span></div>
+  <div class="tt-divider" id="tt-spawn-div" style="display:none"></div>
+  <div class="tt-row" id="tt-spawn-row" style="display:none"><span class="tt-label">Spawned</span><span class="tt-val" id="tt-spawned">—</span></div>
+</div>
+
+<script>
+// ─── Data model ───────────────────────────────────────────────────────────────
+const TOTAL_MS = 227000; // 3:47 session length
+const PX_PER_MS = 0.0028; // zoom level → canvas width = ~636px initially, we'll use more
+const CANVAS_W = 1200;
+const LANE_H = 54;
+const LANE_GAP = 10;
+const ROW_H = LANE_H + LANE_GAP;
+const RULER_H = 32;
+
+const lanes = [
+  { id:'main',        name:'main-agent',  model:'sonnet-4-6', color:'#00f5ff', bg:'rgba(0,245,255,.10)',  depth:0 },
+  { id:'researcher',  name:'researcher',  model:'haiku-4-5',  color:'#c263ff', bg:'rgba(194,99,255,.10)', depth:1 },
+  { id:'coder',       name:'coder',       model:'sonnet-4-6', color:'#ff6ec7', bg:'rgba(255,110,199,.10)',depth:1 },
+  { id:'test-runner', name:'test-runner', model:'haiku-4-5',  color:'#ffaa00', bg:'rgba(255,170,0,.10)',  depth:2 },
+  { id:'file-writer', name:'file-writer', model:'haiku-4-5',  color:'#39ff14', bg:'rgba(57,255,20,.09)',  depth:2 },
+];
+
+// t0,t1 in seconds from session start, action: P/M/R/L(ive)
+const calls = [
+  // main-agent — frequent calls throughout
+  { lane:'main', num:1,  t0:0,     t1:4,     action:'P', tokens:1200 },
+  { lane:'main', num:2,  t0:5,     t1:9,     action:'M', tokens:8400, mutRule:'strip-reminder' },
+  { lane:'main', num:3,  t0:11,    t1:22,    action:'M', tokens:28000, mutRule:'strip-reminder, truncate-diff', spawns:'researcher' },
+  { lane:'main', num:4,  t0:68,    t1:77,    action:'M', tokens:41000, mutRule:'strip-reminder', spawns:'coder' },
+  { lane:'main', num:5,  t0:145,   t1:152,   action:'P', tokens:3200 },
+  { lane:'main', num:6,  t0:158,   t1:166,   action:'M', tokens:52000, mutRule:'strip-reminder' },
+  { lane:'main', num:7,  t0:195,   t1:204,   action:'P', tokens:6100 },
+  { lane:'main', num:8,  t0:210,   t1:218,   action:'M', tokens:82400, mutRule:'strip-reminder, truncate-diff', live:true },
+
+  // researcher — short burst after spawn
+  { lane:'researcher', num:1, t0:24,  t1:30,  action:'P', tokens:2100 },
+  { lane:'researcher', num:2, t0:32,  t1:38,  action:'P', tokens:5400 },
+  { lane:'researcher', num:3, t0:40,  t1:52,  action:'M', tokens:14200, mutRule:'strip-reminder' },
+  { lane:'researcher', num:4, t0:54,  t1:61,  action:'P', tokens:3800 },
+  { lane:'researcher', num:5, t0:62,  t1:65,  action:'P', tokens:8100 },
+
+  // coder — longer calls, spawns children
+  { lane:'coder', num:1,  t0:79,  t1:92,  action:'M', tokens:18000, mutRule:'strip-reminder', spawns:'file-writer' },
+  { lane:'coder', num:2,  t0:95,  t1:108, action:'M', tokens:32000, mutRule:'strip-reminder, truncate-diff', spawns:'test-runner' },
+  { lane:'coder', num:3,  t0:125, t1:136, action:'M', tokens:44000, mutRule:'strip-reminder' },
+  { lane:'coder', num:4,  t0:140, t1:143, action:'P', tokens:2200 },
+  { lane:'coder', num:5,  t0:168, t1:181, action:'R', tokens:94800, mutRule:'max-ctx-limit' },
+  { lane:'coder', num:6,  t0:183, t1:192, action:'M', tokens:61000, mutRule:'strip-reminder' },
+
+  // test-runner — triggered by coder
+  { lane:'test-runner', num:1, t0:110, t1:118, action:'P', tokens:4400 },
+  { lane:'test-runner', num:2, t0:120, t1:122, action:'M', tokens:11000, mutRule:'strip-reminder' },
+
+  // file-writer — triggered by coder
+  { lane:'file-writer', num:1, t0:94,  t1:100, action:'P', tokens:3200 },
+  { lane:'file-writer', num:2, t0:102, t1:112, action:'P', tokens:8900 },
+  { lane:'file-writer', num:3, t0:114, t1:118, action:'M', tokens:22000, mutRule:'strip-reminder' },
+];
+
+// spawn connections: { from: {lane, callNum}, to: {lane} }
+// We'll detect these automatically from `spawns` field
+
+// ─── Rendering ────────────────────────────────────────────────────────────────
+const canvasW = CANVAS_W;
+
+function toPx(sec) { return (sec / TOTAL_MS * 1000) * (canvasW / (TOTAL_MS/1000)); }
+// simpler: map 0..TOTAL_MS seconds to 0..canvasW
+function sPx(sec) { return sec / (TOTAL_MS/1000) * canvasW; }
+
+function laneY(laneIdx) {
+  // center of pill in lane row
+  return RULER_H + laneIdx * ROW_H + (LANE_H / 2) + LANE_GAP/2;
+}
+
+// Build lane labels
+const labelsEl = document.getElementById('laneLabels');
+lanes.forEach((lane, i) => {
+  const el = document.createElement('div');
+  el.className = 'lane-label';
+  el.innerHTML = `
+    <div class="lane-color" style="background:${lane.color};box-shadow:0 0 6px ${lane.color}66;"></div>
+    <div class="lane-info">
+      <div class="lane-name" style="color:${lane.color}">${lane.name}</div>
+      <div class="lane-sub">${lane.model} · d${lane.depth}</div>
+    </div>`;
+  labelsEl.appendChild(el);
+});
+
+// Build lane rows
+const laneRowsEl = document.getElementById('laneRows');
+const totalH = lanes.length * ROW_H;
+laneRowsEl.style.height = totalH + 'px';
+laneRowsEl.style.width  = canvasW + 'px';
+
+lanes.forEach((lane, i) => {
+  const row = document.createElement('div');
+  row.className = 'lane-row';
+  row.style.height = ROW_H + 'px';
+  // subtle colored tint
+  row.style.background = `linear-gradient(to right, ${lane.bg.replace(')', ', 0.5)').replace('rgba','rgba')}, transparent 30%)`;
+  laneRowsEl.appendChild(row);
+});
+
+// Set canvas width
+document.getElementById('tlCanvas').style.width = canvasW + 'px';
+
+// Draw ruler
+const rulerSvg = document.getElementById('rulerSvg');
+rulerSvg.setAttribute('viewBox', `0 0 ${canvasW} 32`);
+rulerSvg.setAttribute('width', canvasW);
+for (let s = 0; s <= TOTAL_MS/1000; s += 15) {
+  const x = sPx(s);
+  const major = s % 60 === 0;
+  const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+  line.setAttribute('x1', x); line.setAttribute('x2', x);
+  line.setAttribute('y1', major ? 0 : 18); line.setAttribute('y2', 32);
+  line.setAttribute('stroke', major ? 'rgba(255,255,255,.12)' : 'rgba(255,255,255,.05)');
+  line.setAttribute('stroke-width', major ? 1 : 0.5);
+  rulerSvg.appendChild(line);
+  if (major || s % 30 === 0) {
+    const mins = Math.floor(s/60), secs = s%60;
+    const label = document.createElementNS('http://www.w3.org/2000/svg','text');
+    label.setAttribute('x', x+3); label.setAttribute('y', 13);
+    label.setAttribute('fill', 'rgba(255,255,255,.25)');
+    label.setAttribute('font-size', '9');
+    label.setAttribute('font-family', 'JetBrains Mono, monospace');
+    label.textContent = `${mins}:${String(secs).padStart(2,'0')}`;
+    rulerSvg.appendChild(label);
+  }
+}
+
+// Draw calls as pills
+const tooltip = document.getElementById('tooltip');
+calls.forEach(call => {
+  const laneIdx = lanes.findIndex(l => l.id === call.lane);
+  if (laneIdx < 0) return;
+  const lane = lanes[laneIdx];
+  const x = sPx(call.t0);
+  const w = Math.max(sPx(call.t1) - sPx(call.t0), 14);
+  const yCenter = laneY(laneIdx) - RULER_H; // relative to laneRows
+
+  const pill = document.createElement('div');
+  pill.className = 'call-pill' + (call.live ? ' live' : '');
+  pill.style.left = x + 'px';
+  pill.style.width = w + 'px';
+  pill.style.top = (yCenter) + 'px';
+  pill.style.background = lane.bg;
+  pill.style.borderColor = lane.color + '55';
+  pill.style.boxShadow = `0 0 ${call.live ? 18 : 8}px ${lane.color}${call.live ? '55' : '28'}`;
+
+  if (w > 40) {
+    pill.innerHTML = `<div class="pill-inner">
+      <span class="pill-call-num" style="color:${lane.color}">#${call.num}</span>
+      <span class="pill-badge" style="color:${lane.color}">${call.action === 'L' ? '●' : call.action === 'M' ? '✦' : call.action === 'R' ? '✕' : '—'}</span>
+      ${w > 80 ? `<span class="pill-tokens" style="color:${lane.color}">${call.tokens >= 1000 ? Math.round(call.tokens/1000)+'k' : call.tokens}</span>` : ''}
+    </div>`;
+  }
+  if (call.action === 'M') {
+    const mark = document.createElement('div'); mark.className='pill-mut-mark'; pill.appendChild(mark);
+  }
+  if (call.action === 'R') {
+    const mark = document.createElement('div'); mark.className='pill-rej-mark'; pill.appendChild(mark);
+  }
+
+  // Tooltip
+  pill.addEventListener('mouseenter', (e) => {
+    document.getElementById('tt-agent').textContent = lane.name;
+    document.getElementById('tt-call').textContent = `#${call.num}`;
+    const ab = document.getElementById('tt-action');
+    ab.textContent = call.live ? 'LIVE' : call.action === 'M' ? 'MUTATED' : call.action === 'R' ? 'REJECTED' : 'PROCEED';
+    ab.className = 'tt-badge ' + (call.live ? 'L' : call.action);
+    document.getElementById('tt-tokens').textContent = call.tokens.toLocaleString() + ' tokens';
+    const t0s = call.t0, t1s = call.t1;
+    document.getElementById('tt-time').textContent = `${Math.floor(t0s/60)}:${String(t0s%60).padStart(2,'0')}`;
+    document.getElementById('tt-dur').textContent = (t1s - t0s) + 's';
+    if (call.spawns) {
+      document.getElementById('tt-spawn-div').style.display = '';
+      document.getElementById('tt-spawn-row').style.display = '';
+      document.getElementById('tt-spawned').textContent = call.spawns;
+    } else {
+      document.getElementById('tt-spawn-div').style.display = 'none';
+      document.getElementById('tt-spawn-row').style.display = 'none';
+    }
+    tooltip.classList.add('visible');
+  });
+  pill.addEventListener('mousemove', (e) => {
+    tooltip.style.left = (e.clientX + 14) + 'px';
+    tooltip.style.top  = (e.clientY - 60) + 'px';
+  });
+  pill.addEventListener('mouseleave', () => tooltip.classList.remove('visible'));
+  pill.addEventListener('click', () => {
+    document.querySelectorAll('.call-pill.selected').forEach(p => p.classList.remove('selected'));
+    pill.classList.add('selected');
+  });
+
+  laneRowsEl.appendChild(pill);
+});
+
+// ─── Spawn curves ─────────────────────────────────────────────────────────────
+const spawnSvg = document.getElementById('spawnSvg');
+spawnSvg.setAttribute('width', canvasW);
+spawnSvg.setAttribute('height', totalH + RULER_H);
+
+// For each call with spawns, draw a bezier from the call pill end to the first pill of the child lane
+calls.filter(c => c.spawns).forEach(parentCall => {
+  const childLane = parentCall.spawns;
+  const childCalls = calls.filter(c => c.lane === childLane);
+  if (!childCalls.length) return;
+  const firstChild = childCalls[0];
+
+  const parentLaneIdx = lanes.findIndex(l => l.id === parentCall.lane);
+  const childLaneIdx  = lanes.findIndex(l => l.id === childLane);
+  const parentLane = lanes[parentLaneIdx];
+  const childLaneDef = lanes[childLaneIdx];
+
+  // spawn point: end of parent pill
+  const x1 = sPx(parentCall.t1);
+  const y1 = laneY(parentLaneIdx);
+  // arrival point: start of first child call
+  const x2 = sPx(firstChild.t0);
+  const y2 = laneY(childLaneIdx);
+
+  // bezier control points — curve up then across
+  const cx1 = x1 + (x2 - x1) * 0.35;
+  const cy1 = y1;
+  const cx2 = x1 + (x2 - x1) * 0.65;
+  const cy2 = y2;
+
+  const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+  path.setAttribute('d', `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`);
+  path.setAttribute('stroke', childLaneDef.color + '55');
+  path.setAttribute('stroke-width', '1.5');
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke-dasharray', '4 3');
+
+  // animated particle along spawn curve
+  const circle = document.createElementNS('http://www.w3.org/2000/svg','circle');
+  circle.setAttribute('r', '3');
+  circle.setAttribute('fill', childLaneDef.color);
+  circle.setAttribute('opacity', '0.8');
+  const anim = document.createElementNS('http://www.w3.org/2000/svg','animateMotion');
+  anim.setAttribute('dur', '2s');
+  anim.setAttribute('repeatCount', '1');
+  anim.setAttribute('fill','freeze');
+  const mpath = document.createElementNS('http://www.w3.org/2000/svg','mpath');
+  // inline path
+  anim.setAttribute('path', `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`);
+  circle.appendChild(anim);
+
+  // spawn dot at origin
+  const dot1 = document.createElementNS('http://www.w3.org/2000/svg','circle');
+  dot1.setAttribute('cx', x1); dot1.setAttribute('cy', y1); dot1.setAttribute('r','3');
+  dot1.setAttribute('fill', childLaneDef.color); dot1.setAttribute('opacity','.5');
+
+  // spawn dot at destination
+  const dot2 = document.createElementNS('http://www.w3.org/2000/svg','circle');
+  dot2.setAttribute('cx', x2); dot2.setAttribute('cy', y2); dot2.setAttribute('r','4');
+  dot2.setAttribute('fill', 'none');
+  dot2.setAttribute('stroke', childLaneDef.color);
+  dot2.setAttribute('stroke-width','1.5');
+  dot2.setAttribute('opacity','.6');
+
+  spawnSvg.appendChild(path);
+  spawnSvg.appendChild(dot1);
+  spawnSvg.appendChild(dot2);
+  spawnSvg.appendChild(circle);
+});
+
+// Live cursor
+const liveSec = 218; // current time ~3:38 in the session (latest live call at t0=210)
+const liveCursor = document.getElementById('liveCursor');
+liveCursor.style.left = sPx(liveSec) + 'px';
+liveCursor.style.height = (totalH + RULER_H) + 'px';
+liveCursor.style.top = '0';
+
+// scroll canvas to live cursor
+setTimeout(() => {
+  const wrap = document.getElementById('canvasWrap');
+  const liveX = sPx(liveSec);
+  wrap.scrollLeft = Math.max(0, liveX - wrap.clientWidth * 0.7);
+}, 100);
+
+// ─── Lane label height alignment ─────────────────────────────────────────────
+// Make lane labels same height as rows
+document.querySelectorAll('.lane-label').forEach(el => {
+  el.style.height = ROW_H + 'px';
+});
+</script>
+</body>
+</html>

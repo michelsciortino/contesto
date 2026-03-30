@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Governor — Agent Conversation</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+  :root {
+    --bg-void:#070a0f; --bg-surface:#0c1018; --bg-raised:#111822; --bg-card:#131b24;
+    --border:rgba(255,255,255,.055); --border-hi:rgba(255,255,255,.10);
+    --cyan:#00f5ff; --green:#39ff14; --amber:#ffaa00; --red:#ff2d55;
+    --purple:#c263ff; --blue:#4d9fff; --teal:#00e5c0; --pink:#ff6ec7;
+    --cyan-bg:rgba(0,245,255,.07); --green-bg:rgba(57,255,20,.07);
+    --amber-bg:rgba(255,170,0,.09); --red-bg:rgba(255,45,85,.09);
+    --purple-bg:rgba(194,99,255,.09); --blue-bg:rgba(77,159,255,.08);
+    --teal-bg:rgba(0,229,192,.08); --pink-bg:rgba(255,110,199,.08);
+    /* Segment palette — each field type gets a distinct neon */
+    --seg-system: #2979ff;   --seg-system-bg: rgba(41,121,255,.12);
+    --seg-tools:  #c263ff;   --seg-tools-bg:  rgba(194,99,255,.12);
+    --seg-usr:    #00e5c0;   --seg-usr-bg:    rgba(0,229,192,.10);
+    --seg-asst:   #39ff14;   --seg-asst-bg:   rgba(57,255,20,.08);
+    --seg-tool-r: #ffaa00;   --seg-tool-r-bg: rgba(255,170,0,.10);
+    --text:#dce8f0; --text-sec:#7a93a8; --text-dim:#3d5264;
+    --mono:'JetBrains Mono',monospace; --ui:'Space Grotesk',sans-serif;
+    --sidebar-w:180px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg-void);color:var(--text);font-family:var(--ui);height:100vh;overflow:hidden;display:flex;flex-direction:column;}
+  body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
+    background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.02) 3px,rgba(0,0,0,.02) 4px);}
+
+  /* Sidebar */
+  .sidebar{position:fixed;top:0;left:0;width:var(--sidebar-w);height:100vh;background:var(--bg-surface);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:100;}
+  .brand{display:flex;align-items:center;gap:10px;padding:16px 16px 14px;border-bottom:1px solid var(--border);}
+  .brand-mark{width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,var(--cyan),var(--purple));display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#000;box-shadow:0 0 14px rgba(0,245,255,.35);}
+  .brand-name{font-size:14px;font-weight:700;} .brand-ver{font-size:9px;font-family:var(--mono);color:var(--text-dim);}
+  .nav-sec{font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);padding:14px 16px 5px;}
+  .nav-item{display:flex;align-items:center;gap:9px;padding:8px 14px;margin:1px 8px;border-radius:7px;cursor:pointer;color:var(--text-sec);font-size:13px;font-weight:500;transition:all .15s;position:relative;}
+  .nav-item:hover{background:rgba(255,255,255,.04);color:var(--text);}
+  .nav-item.active{background:var(--cyan-bg);color:var(--cyan);box-shadow:inset 0 0 0 1px rgba(0,245,255,.15);}
+  .nav-item.active::before{content:'';position:absolute;left:-8px;top:50%;transform:translateY(-50%);width:3px;height:18px;background:var(--cyan);border-radius:0 2px 2px 0;box-shadow:0 0 8px var(--cyan);}
+  .nav-icon{font-size:15px;width:18px;text-align:center;flex-shrink:0;}
+  .nav-badge{font-size:9px;font-family:var(--mono);padding:1px 5px;background:var(--red-bg);color:var(--red);border-radius:3px;border:1px solid rgba(255,45,85,.2);}
+  .sb-bottom{margin-top:auto;padding:12px 8px;border-top:1px solid var(--border);}
+
+  /* Topbar */
+  .topbar{margin-left:var(--sidebar-w);height:48px;background:var(--bg-surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:10px;flex-shrink:0;}
+  .back-btn{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid var(--border);background:rgba(255,255,255,.03);color:var(--text-sec);font-size:11px;font-family:var(--mono);transition:all .15s;}
+  .back-btn:hover{background:rgba(255,255,255,.06);color:var(--text);}
+  .crumb{font-size:12px;color:var(--text-dim);} .sep{color:var(--text-dim);}
+  .agent-pill{display:flex;align-items:center;gap:7px;padding:4px 12px;border-radius:20px;background:var(--cyan-bg);border:1px solid rgba(0,245,255,.2);font-size:12px;font-weight:600;font-family:var(--mono);color:var(--cyan);}
+  .agent-dot{width:7px;height:7px;border-radius:50%;background:var(--cyan);box-shadow:0 0 6px var(--cyan);animation:blink 1.2s infinite;}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+  .topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px;}
+  .pill{display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:10px;font-weight:600;font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase;}
+  .pill-dot{width:5px;height:5px;border-radius:50%;background:currentColor;}
+  .pill.rec{background:var(--red-bg);color:var(--red);border:1px solid rgba(255,45,85,.3);animation:rec-glow 1.8s infinite;}
+  @keyframes rec-glow{0%,100%{box-shadow:0 0 8px rgba(255,45,85,.1)}50%{box-shadow:0 0 16px rgba(255,45,85,.3)}}
+
+  /* Sub-toolbar */
+  .toolbar{margin-left:var(--sidebar-w);height:40px;background:var(--bg-raised);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:10px;flex-shrink:0;}
+  .tb-btn{display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:5px;font-size:11px;cursor:pointer;border:1px solid var(--border);background:rgba(255,255,255,.03);color:var(--text-sec);font-family:var(--mono);transition:all .15s;}
+  .tb-btn:hover{background:rgba(255,255,255,.06);color:var(--text);}
+  .tb-sep{width:1px;height:20px;background:var(--border);margin:0 4px;}
+
+  /* Legend */
+  .legend{display:flex;align-items:center;gap:12px;margin-left:auto;}
+  .leg-item{display:flex;align-items:center;gap:5px;font-size:9px;font-family:var(--mono);color:var(--text-dim);}
+  .leg-dot{width:8px;height:8px;border-radius:2px;}
+
+  /* Main layout */
+  .page-body{margin-left:var(--sidebar-w);flex:1;overflow:hidden;display:flex;flex-direction:column;}
+
+  /* Timeline scroll area */
+  .timeline{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:0;}
+
+  /* ── API call row ── */
+  .call-row{
+    display:flex;align-items:flex-start;gap:0;
+    margin-bottom:0;
+    position:relative;
+  }
+
+  /* Vertical timeline line */
+  .tl-line{
+    width:32px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;
+    position:relative;padding-top:18px;
+  }
+  .tl-dot{
+    width:10px;height:10px;border-radius:50%;border:2px solid;flex-shrink:0;
+    position:relative;z-index:2;
+  }
+  .tl-dot.proceed{border-color:var(--green);background:rgba(57,255,20,.2);box-shadow:0 0 8px rgba(57,255,20,.4);}
+  .tl-dot.mutated{border-color:var(--amber);background:rgba(255,170,0,.2);box-shadow:0 0 8px rgba(255,170,0,.4);}
+  .tl-dot.reject {border-color:var(--red);  background:rgba(255,45,85,.2); box-shadow:0 0 8px rgba(255,45,85,.4);}
+  .tl-dot.active {border-color:var(--cyan); background:rgba(0,245,255,.2); box-shadow:0 0 10px rgba(0,245,255,.5);animation:blink .8s infinite;}
+  .tl-connector{
+    width:2px;flex:1;min-height:12px;
+    background:linear-gradient(to bottom,rgba(255,255,255,.06),rgba(255,255,255,.03));
+  }
+
+  /* Call card */
+  .call-card{
+    flex:1;background:var(--bg-card);border:1px solid var(--border);
+    border-radius:10px;margin-bottom:8px;overflow:hidden;
+    transition:border-color .15s;cursor:pointer;
+  }
+  .call-card:hover{border-color:var(--border-hi);}
+  .call-card.expanded{border-color:rgba(0,245,255,.15);}
+  .call-card.active-row{border-color:rgba(0,245,255,.2);box-shadow:0 0 16px rgba(0,245,255,.06);}
+
+  /* Card header */
+  .card-header{
+    display:flex;align-items:center;gap:10px;
+    padding:10px 14px;
+  }
+  .call-num{font-size:10px;font-family:var(--mono);color:var(--text-dim);width:24px;flex-shrink:0;}
+  .badge{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:4px;font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.08em;flex-shrink:0;}
+  .badge.M{background:var(--amber-bg);color:var(--amber);border:1px solid rgba(255,170,0,.2);}
+  .badge.P{background:rgba(255,255,255,.05);color:var(--text-dim);border:1px solid var(--border);}
+  .badge.R{background:var(--red-bg);color:var(--red);border:1px solid rgba(255,45,85,.2);}
+  .badge.live{background:var(--cyan-bg);color:var(--cyan);border:1px solid rgba(0,245,255,.2);animation:blink .8s infinite;}
+  .model-tag{font-family:var(--mono);font-size:10px;color:var(--text-sec);background:rgba(255,255,255,.04);padding:2px 7px;border-radius:3px;border:1px solid var(--border);}
+  .card-ts{font-family:var(--mono);font-size:10px;color:var(--text-dim);}
+  .card-tokens{font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-left:auto;}
+  .card-tokens span{color:var(--text-sec);}
+  .card-chevron{font-size:12px;color:var(--text-dim);transition:transform .2s;flex-shrink:0;}
+  .card-chevron.open{transform:rotate(90deg);}
+
+  /* Context anatomy bar — the key visualization */
+  .anatomy-strip{
+    padding:0 14px 10px;
+    display:flex;gap:2px;align-items:stretch;height:28px;
+  }
+  .seg{
+    border-radius:4px;cursor:pointer;
+    transition:all .15s;position:relative;
+    min-width:4px;
+    display:flex;align-items:center;justify-content:center;
+    overflow:hidden;
+  }
+  .seg:hover{filter:brightness(1.3);transform:scaleY(1.08);}
+  .seg.active-seg{outline:2px solid rgba(255,255,255,.35);outline-offset:1px;}
+
+  .seg.system {background:linear-gradient(135deg,rgba(41,121,255,.5),rgba(41,121,255,.3));border:1px solid rgba(41,121,255,.4);}
+  .seg.tools  {background:linear-gradient(135deg,rgba(194,99,255,.5),rgba(194,99,255,.3));border:1px solid rgba(194,99,255,.4);}
+  .seg.user-msg{background:linear-gradient(135deg,rgba(0,229,192,.5),rgba(0,229,192,.3));border:1px solid rgba(0,229,192,.4);}
+  .seg.asst-msg{background:linear-gradient(135deg,rgba(57,255,20,.4),rgba(57,255,20,.2)); border:1px solid rgba(57,255,20,.35);}
+  .seg.tool-result{background:linear-gradient(135deg,rgba(255,170,0,.45),rgba(255,170,0,.25));border:1px solid rgba(255,170,0,.35);}
+
+  .seg-label{font-size:8px;font-family:var(--mono);font-weight:700;color:rgba(255,255,255,.7);padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+  /* Expand: field sections */
+  .card-detail{
+    border-top:1px solid var(--border);
+    display:none;
+  }
+  .card-detail.visible{display:block;}
+
+  /* Field section */
+  .field-section{border-bottom:1px solid var(--border);}
+  .field-section:last-child{border-bottom:none;}
+
+  .field-header{
+    display:flex;align-items:center;gap:10px;
+    padding:9px 14px;cursor:pointer;transition:background .12s;
+  }
+  .field-header:hover{background:rgba(255,255,255,.02);}
+  .field-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0;}
+  .field-dot.system{background:var(--seg-system);box-shadow:0 0 6px rgba(41,121,255,.5);}
+  .field-dot.tools{background:var(--seg-tools);box-shadow:0 0 6px rgba(194,99,255,.5);}
+  .field-dot.user-msg{background:var(--seg-usr);box-shadow:0 0 6px rgba(0,229,192,.5);}
+  .field-dot.asst-msg{background:var(--seg-asst);box-shadow:0 0 6px rgba(57,255,20,.4);}
+  .field-dot.tool-result{background:var(--seg-tool-r);box-shadow:0 0 6px rgba(255,170,0,.4);}
+
+  .field-name{font-size:11px;font-weight:600;color:var(--text-sec);flex:1;}
+  .field-count{font-size:10px;font-family:var(--mono);color:var(--text-dim);background:rgba(255,255,255,.04);border:1px solid var(--border);padding:1px 6px;border-radius:3px;}
+  .field-tokens{font-size:10px;font-family:var(--mono);color:var(--text-dim);}
+  .field-chevron{font-size:11px;color:var(--text-dim);transition:transform .15s;}
+  .field-chevron.open{transform:rotate(90deg);}
+
+  /* Items inside a field section */
+  .field-items{display:none;padding:0 14px 10px;}
+  .field-items.visible{display:block;}
+
+  .field-item{
+    background:var(--bg-raised);border:1px solid var(--border);border-radius:7px;
+    margin-bottom:6px;overflow:hidden;cursor:pointer;transition:border-color .12s;
+  }
+  .field-item:hover{border-color:var(--border-hi);}
+  .field-item:last-child{margin-bottom:0;}
+  .field-item.open{border-color:rgba(255,255,255,.12);}
+
+  .item-header{
+    display:flex;align-items:center;gap:8px;
+    padding:7px 10px;
+  }
+  .item-index{font-size:9px;font-family:var(--mono);color:var(--text-dim);width:20px;flex-shrink:0;}
+  .item-type-tag{font-size:9px;font-family:var(--mono);font-weight:600;padding:1px 5px;border-radius:3px;}
+  .item-type-tag.text{background:rgba(255,255,255,.06);color:var(--text-sec);border:1px solid var(--border);}
+  .item-type-tag.tu{background:var(--purple-bg);color:var(--purple);border:1px solid rgba(194,99,255,.2);}
+  .item-type-tag.tr{background:var(--amber-bg);color:var(--amber);border:1px solid rgba(255,170,0,.2);}
+  .item-preview{font-size:10px;font-family:var(--mono);color:var(--text-dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .item-size{font-size:9px;font-family:var(--mono);color:var(--text-dim);margin-left:auto;flex-shrink:0;}
+  .item-chevron{font-size:10px;color:var(--text-dim);transition:transform .15s;flex-shrink:0;}
+  .item-chevron.open{transform:rotate(90deg);}
+
+  /* Expanded item content */
+  .item-content{
+    padding:0 10px 10px;
+    display:none;
+  }
+  .item-content.visible{display:block;}
+  .item-content pre{
+    font-family:var(--mono);font-size:10px;line-height:1.65;
+    color:var(--text-sec);background:var(--bg-void);
+    border:1px solid var(--border);border-radius:6px;
+    padding:10px 12px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;
+    max-height:200px;overflow-y:auto;
+  }
+  /* Mutation highlight within content */
+  .mut-del{background:rgba(255,45,85,.12);color:#ff7090;border-radius:2px;padding:0 2px;}
+  .mut-add{background:rgba(57,255,20,.09);color:#7dff6b;border-radius:2px;padding:0 2px;}
+
+  /* Tool name highlight */
+  .tool-name-tag{color:var(--purple);font-weight:700;}
+  .key-tag{color:var(--cyan);}
+  .val-tag{color:var(--amber);}
+  .str-tag{color:var(--teal);}
+
+  /* Status bar */
+  .statusbar{margin-left:var(--sidebar-w);height:22px;background:var(--bg-surface);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:14px;flex-shrink:0;}
+  .sb-item{display:flex;align-items:center;gap:4px;font-size:9px;font-family:var(--mono);color:var(--text-dim);}
+  .sdot{width:5px;height:5px;border-radius:50%;}
+  .sdot.ok{background:var(--green);box-shadow:0 0 4px var(--green);}
+  .sdot.ws{background:var(--cyan);box-shadow:0 0 4px var(--cyan);animation:blink 2s infinite;}
+  .sb-right{margin-left:auto;display:flex;gap:14px;}
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<nav class="sidebar">
+  <div class="brand">
+    <div class="brand-mark">G</div>
+    <div><div class="brand-name">Governor</div><div class="brand-ver">v0.2.0</div></div>
+  </div>
+  <div class="nav-sec">Monitor</div>
+  <div class="nav-item"><span class="nav-icon">◉</span><span style="flex:1">Live View</span><span class="nav-badge">REC</span></div>
+  <div class="nav-item active"><span class="nav-icon">⬡</span><span>LiveFlow</span></div>
+  <div class="nav-item"><span class="nav-icon">◎</span><span>Recordings</span></div>
+  <div class="nav-item"><span class="nav-icon">≋</span><span>Traces</span></div>
+  <div class="nav-sec">Configure</div>
+  <div class="nav-item"><span class="nav-icon">⊞</span><span>Rules</span></div>
+  <div class="sb-bottom"><div class="nav-item"><span class="nav-icon">⚙</span><span>Settings</span></div></div>
+</nav>
+
+<!-- Topbar -->
+<header class="topbar">
+  <div class="back-btn">← LiveFlow</div>
+  <span class="sep">›</span>
+  <span class="crumb">main-agent</span>
+  <span class="sep">›</span>
+  <div class="agent-pill"><div class="agent-dot"></div>main-agent · LIVE</div>
+  <div style="font-size:11px;color:var(--text-dim);font-family:var(--mono)">claude-sonnet-4-6 · session d024e4be</div>
+  <div class="topbar-right">
+    <div class="pill rec"><div class="pill-dot"></div>Recording · 03:47</div>
+  </div>
+</header>
+
+<!-- Sub-toolbar -->
+<div class="toolbar">
+  <div class="tb-btn active">All calls (47)</div>
+  <div class="tb-btn">Mutated (31)</div>
+  <div class="tb-btn">Proceed (14)</div>
+  <div class="tb-btn">Rejected (2)</div>
+  <div class="tb-sep"></div>
+  <div class="tb-btn">↓ Newest first</div>
+  <div class="tb-btn">⊕ Expand all</div>
+  <!-- Segment legend -->
+  <div class="legend">
+    <div class="leg-item"><div class="leg-dot" style="background:var(--seg-system)"></div>System</div>
+    <div class="leg-item"><div class="leg-dot" style="background:var(--seg-tools)"></div>Tools</div>
+    <div class="leg-item"><div class="leg-dot" style="background:var(--seg-usr)"></div>User msg</div>
+    <div class="leg-item"><div class="leg-dot" style="background:var(--seg-asst)"></div>Asst msg</div>
+    <div class="leg-item"><div class="leg-dot" style="background:var(--seg-tool-r)"></div>Tool result</div>
+  </div>
+</div>
+
+<!-- Timeline -->
+<div class="page-body">
+<div class="timeline" id="timeline">
+
+  <!-- ── CALL 47 (active, in-flight) ── -->
+  <div class="call-row">
+    <div class="tl-line">
+      <div class="tl-dot active"></div>
+      <div class="tl-connector"></div>
+    </div>
+    <div class="call-card active-row" onclick="toggleCard(this)">
+      <div class="card-header">
+        <span class="call-num">#47</span>
+        <span class="badge live">● LIVE</span>
+        <span class="model-tag">sonnet-4-6</span>
+        <span class="card-ts">just now</span>
+        <span class="card-tokens">82,400 tokens <span>/ 200k</span></span>
+        <span class="card-chevron">›</span>
+      </div>
+      <!-- Context anatomy bar -->
+      <div class="anatomy-strip">
+        <!-- system: ~8% -->
+        <div class="seg system" style="flex:8" title="System blocks · 6,560 tokens" onclick="jumpToField(this,'system-47')">
+          <span class="seg-label">SYS</span>
+        </div>
+        <!-- tools: ~18% -->
+        <div class="seg tools" style="flex:18" title="Tools · 14,800 tokens" onclick="jumpToField(this,'tools-47')">
+          <span class="seg-label">TOOLS ×29</span>
+        </div>
+        <!-- user msgs: ~28% -->
+        <div class="seg user-msg" style="flex:14" title="User message · 11,500 tokens" onclick="jumpToField(this,'user-47')">
+          <span class="seg-label">USR</span>
+        </div>
+        <!-- assistant -->
+        <div class="seg asst-msg" style="flex:12" title="Assistant message · 9,840 tokens" onclick="jumpToField(this,'asst-47')">
+          <span class="seg-label">ASST</span>
+        </div>
+        <!-- tool results: 30% -->
+        <div class="seg tool-result" style="flex:30" title="Tool results · 24,600 tokens" onclick="jumpToField(this,'tr-47')">
+          <span class="seg-label">TOOL RESULTS ×8</span>
+        </div>
+        <!-- more user -->
+        <div class="seg user-msg" style="flex:10" title="User message · 8,200 tokens">
+          <span class="seg-label">USR</span>
+        </div>
+        <!-- more asst -->
+        <div class="seg asst-msg" style="flex:8" title="Assistant · 6,560 tokens">
+          <span class="seg-label">ASST</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── CALL 46 — expanded ── -->
+  <div class="call-row">
+    <div class="tl-line">
+      <div class="tl-dot mutated"></div>
+      <div class="tl-connector"></div>
+    </div>
+    <div class="call-card expanded" onclick="toggleCard(this)">
+      <div class="card-header">
+        <span class="call-num">#46</span>
+        <span class="badge M">● MUTATED</span>
+        <span class="model-tag">sonnet-4-6</span>
+        <span class="card-ts">4s ago</span>
+        <span class="card-tokens">41,130 tokens <span style="color:var(--green)"> (−37k saved)</span></span>
+        <span class="card-chevron open">›</span>
+      </div>
+      <!-- Anatomy bar -->
+      <div class="anatomy-strip">
+        <div class="seg system" style="flex:6" title="System · 2,460 tokens"><span class="seg-label">SYS</span></div>
+        <div class="seg tools" style="flex:22" title="Tools · 9,030 tokens"><span class="seg-label">TOOLS ×29</span></div>
+        <div class="seg user-msg active-seg" style="flex:35" title="User message · 14,380 tokens — MUTATED"><span class="seg-label">USR ✦ MUT</span></div>
+        <div class="seg asst-msg" style="flex:10" title="Assistant · 4,110 tokens"><span class="seg-label">ASST</span></div>
+        <div class="seg tool-result" style="flex:27" title="Tool results · 11,090 tokens"><span class="seg-label">TOOL RESULTS ×5</span></div>
+      </div>
+
+      <!-- Expanded detail -->
+      <div class="card-detail visible" onclick="event.stopPropagation()">
+
+        <!-- SYSTEM section -->
+        <div class="field-section">
+          <div class="field-header" onclick="toggleField(this)">
+            <div class="field-dot system"></div>
+            <span class="field-name">System</span>
+            <span class="field-count">3 blocks</span>
+            <span class="field-tokens">2,460 tokens</span>
+            <span class="field-chevron open">›</span>
+          </div>
+          <div class="field-items visible">
+            <!-- Block 0 -->
+            <div class="field-item" onclick="toggleItem(this)">
+              <div class="item-header">
+                <span class="item-index">[0]</span>
+                <span class="item-type-tag text">text</span>
+                <span class="item-preview">x-anthropic-billing-header: cc_version=2.1.86.204…</span>
+                <span class="item-size">82 tok</span>
+                <span class="item-chevron">›</span>
+              </div>
+            </div>
+            <!-- Block 1 -->
+            <div class="field-item" onclick="toggleItem(this)">
+              <div class="item-header">
+                <span class="item-index">[1]</span>
+                <span class="item-type-tag text">text</span>
+                <span class="item-preview">You are Claude Code, Anthropic's official CLI…</span>
+                <span class="item-size">58 tok</span>
+                <span class="item-chevron">›</span>
+              </div>
+            </div>
+            <!-- Block 2 — expanded -->
+            <div class="field-item open" onclick="toggleItem(this)">
+              <div class="item-header">
+                <span class="item-index">[2]</span>
+                <span class="item-type-tag text">text</span>
+                <span class="item-preview">You are an interactive agent that helps users…</span>
+                <span class="item-size">2,320 tok</span>
+                <span class="item-chevron open">›</span>
+              </div>
+              <div class="item-content visible">
+                <pre><span class="key-tag">"type"</span>: <span class="str-tag">"text"</span>,
+<span class="key-tag">"cache_control"</span>: { <span class="key-tag">"type"</span>: <span class="str-tag">"ephemeral"</span> },
+<span class="key-tag">"text"</span>: <span class="str-tag">"\nYou are an interactive agent that helps users with
+software engineering tasks. Use the instructions below
+and the tools available to you to assist the user.\n\n
+IMPORTANT: Assist with authorized security testing…"</span></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TOOLS section -->
+        <div class="field-section">
+          <div class="field-header" onclick="toggleField(this)">
+            <div class="field-dot tools"></div>
+            <span class="field-name">Tools</span>
+            <span class="field-count">29 tools</span>
+            <span class="field-tokens">9,030 tokens</span>
+            <span class="field-chevron">›</span>
+          </div>
+          <div class="field-items">
+            <div class="field-item open" onclick="toggleItem(this)">
+              <div class="item-header">
+                <span class="item-index">[0]</span>
+                <span class="item-type-tag tu">tool</span>
+                <span class="item-preview tool-name-tag">Agent</span>
+                <span class="item-size">1,840 tok</span>
+                <span class="item-chevron open">›</span>
+              </div>
+              <div class="item-content visible">
+                <pre><span class="key-tag">"name"</span>: <span class="str-tag">"Agent"</span>,
+<span class="key-tag">"description"</span>: <span class="str-tag">"Launch a new agent to handle complex,
+multi-step tasks autonomously…"</span>,
+<span class="key-tag">"input_schema"</span>: {
+  <span class="key-tag">"properties"</span>: {
+    <span class="key-tag">"prompt"</span>:      { <span class="key-tag">"type"</span>: <span class="str-tag">"string"</span> },
+    <span class="key-tag">"description"</span>: { <span class="key-tag">"type"</span>: <span class="str-tag">"string"</span> },
+    <span class="key-tag">"model"</span>:       { <span class="key-tag">"enum"</span>: [<span class="str-tag">"sonnet"</span>,<span class="str-tag">"opus"</span>,<span class="str-tag">"haiku"</span>] }
+  }
+}</pre>
+              </div>
+            </div>
+            <div class="field-item" onclick="toggleItem(this)">
+              <div class="item-header">
+                <span class="item-index">[1]</span><span class="item-type-tag tu">tool</span>
+                <span class="item-preview tool-name-tag">Bash</span>
+                <span class="item-size">340 tok</span><span class="item-chevron">›</span>
+              </div>
+            </div>
+            <div class="field-item" onclick="toggleItem(this)">
+              <div class="item-header">
+                <span class="item-index">[2]</span><span class="item-type-tag tu">tool</span>
+                <span class="item-preview tool-name-tag">Read</span>
+                <span class="item-size">290 tok</span><span class="item-chevron">›</span>
+              </div>
+            </div>
+            <div style="padding:6px 0 4px;font-size:9px;font-family:var(--mono);color:var(--text-dim);text-align:center">+ 26 more tools</div>
+          </div>
+        </div>
+
+        <!-- MESSAGES section — mutated, highlighted -->
+        <div class="field-section">
+          <div class="field-header" onclick="toggleField(this)" style="background:rgba(0,229,192,.03)">
+            <div class="field-dot user-msg"></div>
+            <span class="field-name" style="color:var(--teal)">Messages · user[0] <span style="color:var(--amber);font-size:9px;font-family:var(--mono);margin-left:6px">✦ MUTATED</span></span>
+            <span class="field-count">5 blocks</span>
+            <span class="field-tokens">14,380 tok → <span style="color:var(--green)">5,980 tok (−58%)</span></span>
+            <span class="field-chevron open">›</span>
+          </div>
+          <div class="field-items visible">
+            <!-- Block 0: stripped -->
+            <div class="field-item open" onclick="toggleItem(this)">
+              <div class="item-header">
+                <span class="item-index">[0]</span>
+                <span class="item-type-tag text">text</span>
+                <span class="item-preview mut-del">&lt;system-reminder&gt; stripped by strip-system-reminder</span>
+                <span class="item-size" style="color:var(--red)">−4,200 tok</span>
+                <span class="item-chevron open">›</span>
+              </div>
+              <div class="item-content visible">
+                <pre><span class="key-tag">"type"</span>: <span class="str-tag">"text"</span>,
+<span class="key-tag">"text"</span>:
+  <span class="mut-del">"&lt;system-reminder&gt;
+  SessionStart hook additional context: &lt;EXTREMELY_IMPORTANT&gt;
+  You have superpowers. IMPORTANT: invoke the Skill tool...
+  [+4,200 chars]
+  &lt;/system-reminder&gt;"</span>
+  <span class="mut-add">""  ← stripped by rule: strip-system-reminder (priority 10)</span></pre>
+              </div>
+            </div>
+            <!-- Block 1: stripped -->
+            <div class="field-item" onclick="toggleItem(this)">
+              <div class="item-header">
+                <span class="item-index">[1]</span><span class="item-type-tag text">text</span>
+                <span class="item-preview mut-del">&lt;system-reminder&gt; stripped · skills list</span>
+                <span class="item-size" style="color:var(--red)">−3,100 tok</span><span class="item-chevron">›</span>
+              </div>
+            </div>
+            <!-- Block 2: stripped -->
+            <div class="field-item" onclick="toggleItem(this)">
+              <div class="item-header">
+                <span class="item-index">[2]</span><span class="item-type-tag text">text</span>
+                <span class="item-preview mut-del">&lt;system-reminder&gt; stripped · selection context</span>
+                <span class="item-size" style="color:var(--red)">−900 tok</span><span class="item-chevron">›</span>
+              </div>
+            </div>
+            <!-- Block 3: truncated -->
+            <div class="field-item" onclick="toggleItem(this)">
+              <div class="item-header">
+                <span class="item-index">[3]</span><span class="item-type-tag text">text</span>
+                <span class="item-preview mut-del">claudeMd context — truncated at 8,000 chars</span>
+                <span class="item-size" style="color:var(--amber)">−1,300 tok</span><span class="item-chevron">›</span>
+              </div>
+            </div>
+            <!-- Block 4: untouched -->
+            <div class="field-item open" onclick="toggleItem(this)">
+              <div class="item-header">
+                <span class="item-index">[4]</span><span class="item-type-tag text">text</span>
+                <span class="item-preview">"implement the recording router and write tests"</span>
+                <span class="item-size">480 tok</span><span class="item-chevron open">›</span>
+              </div>
+              <div class="item-content visible">
+                <pre><span class="key-tag">"type"</span>: <span class="str-tag">"text"</span>,
+<span class="key-tag">"text"</span>: <span class="str-tag">"implement the recording router and write tests"</span></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ASSISTANT message -->
+        <div class="field-section">
+          <div class="field-header" onclick="toggleField(this)">
+            <div class="field-dot asst-msg"></div>
+            <span class="field-name">Messages · assistant[1]</span>
+            <span class="field-count">2 blocks</span>
+            <span class="field-tokens">4,110 tokens</span>
+            <span class="field-chevron">›</span>
+          </div>
+          <div class="field-items">
+            <div class="field-item" onclick="toggleItem(this)">
+              <div class="item-header">
+                <span class="item-index">[0]</span><span class="item-type-tag text">text</span>
+                <span class="item-preview">"I'll implement the recording router. Let me start…"</span>
+                <span class="item-size">290 tok</span><span class="item-chevron">›</span>
+              </div>
+            </div>
+            <div class="field-item" onclick="toggleItem(this)">
+              <div class="item-header">
+                <span class="item-index">[1]</span><span class="item-type-tag tu">tool_use</span>
+                <span class="item-preview"><span class="tool-name-tag">Bash</span> — cat control-plane/app/routers/recording.py</span>
+                <span class="item-size">3,820 tok</span><span class="item-chevron">›</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TOOL RESULTS -->
+        <div class="field-section">
+          <div class="field-header" onclick="toggleField(this)">
+            <div class="field-dot tool-result"></div>
+            <span class="field-name">Tool results</span>
+            <span class="field-count">5 results</span>
+            <span class="field-tokens">11,090 tokens</span>
+            <span class="field-chevron">›</span>
+          </div>
+          <div class="field-items">
+            <div class="field-item open" onclick="toggleItem(this)">
+              <div class="item-header">
+                <span class="item-index">[0]</span><span class="item-type-tag tr">tool_result</span>
+                <span class="item-preview"><span class="tool-name-tag">Bash</span> — returncode: 0, stdout: "import uuid\nfrom datetime…"</span>
+                <span class="item-size">2,840 tok</span><span class="item-chevron open">›</span>
+              </div>
+              <div class="item-content visible">
+                <pre><span class="key-tag">"type"</span>:        <span class="str-tag">"tool_result"</span>,
+<span class="key-tag">"tool_use_id"</span>: <span class="str-tag">"toolu_01XYZ…"</span>,
+<span class="key-tag">"content"</span>: [{
+  <span class="key-tag">"type"</span>: <span class="str-tag">"text"</span>,
+  <span class="key-tag">"text"</span>: <span class="str-tag">"import uuid\nfrom datetime import datetime, timezone\n
+from fastapi import APIRouter, Depends, HTTPException\n
+from sqlalchemy.ext.asyncio import AsyncSession\n…"</span>
+}]</pre>
+              </div>
+            </div>
+            <div class="field-item" onclick="toggleItem(this)">
+              <div class="item-header">
+                <span class="item-index">[1]</span><span class="item-type-tag tr">tool_result</span>
+                <span class="item-preview"><span class="tool-name-tag">Bash</span> — pytest output · 31 passed</span>
+                <span class="item-size">1,920 tok</span><span class="item-chevron">›</span>
+              </div>
+            </div>
+            <div class="field-item" onclick="toggleItem(this)">
+              <div class="item-header">
+                <span class="item-index">[2]</span><span class="item-type-tag tr">tool_result</span>
+                <span class="item-preview"><span class="tool-name-tag">Read</span> — control-plane/tests/conftest.py</span>
+                <span class="item-size">2,210 tok</span><span class="item-chevron">›</span>
+              </div>
+            </div>
+            <div style="padding:6px 0 2px;font-size:9px;font-family:var(--mono);color:var(--text-dim);text-align:center">+ 2 more tool results</div>
+          </div>
+        </div>
+
+      </div><!-- card-detail -->
+    </div><!-- call-card -->
+  </div>
+
+  <!-- ── CALL 45 — collapsed ── -->
+  <div class="call-row">
+    <div class="tl-line">
+      <div class="tl-dot proceed"></div>
+      <div class="tl-connector"></div>
+    </div>
+    <div class="call-card" onclick="toggleCard(this)">
+      <div class="card-header">
+        <span class="call-num">#45</span>
+        <span class="badge P">— PROCEED</span>
+        <span class="model-tag">sonnet-4-6</span>
+        <span class="card-ts">9s ago</span>
+        <span class="card-tokens">2,390 tokens</span>
+        <span class="card-chevron">›</span>
+      </div>
+      <div class="anatomy-strip">
+        <div class="seg system" style="flex:12"><span class="seg-label">SYS</span></div>
+        <div class="seg tools" style="flex:52"><span class="seg-label">TOOLS ×29</span></div>
+        <div class="seg user-msg" style="flex:36"><span class="seg-label">USR</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── CALL 44 ── -->
+  <div class="call-row">
+    <div class="tl-line">
+      <div class="tl-dot mutated"></div>
+      <div class="tl-connector"></div>
+    </div>
+    <div class="call-card" onclick="toggleCard(this)">
+      <div class="card-header">
+        <span class="call-num">#44</span>
+        <span class="badge M">● MUTATED</span>
+        <span class="model-tag">sonnet-4-6</span>
+        <span class="card-ts">15s ago</span>
+        <span class="card-tokens">38,100 tokens <span style="color:var(--green)"> (−19k)</span></span>
+        <span class="card-chevron">›</span>
+      </div>
+      <div class="anatomy-strip">
+        <div class="seg system" style="flex:5"><span class="seg-label">SYS</span></div>
+        <div class="seg tools" style="flex:14"><span class="seg-label">TOOLS</span></div>
+        <div class="seg user-msg active-seg" style="flex:18"><span class="seg-label">USR ✦</span></div>
+        <div class="seg asst-msg" style="flex:8"><span class="seg-label">ASST</span></div>
+        <div class="seg tool-result" style="flex:32"><span class="seg-label">RESULTS ×11</span></div>
+        <div class="seg user-msg" style="flex:12"><span class="seg-label">USR</span></div>
+        <div class="seg asst-msg" style="flex:11"><span class="seg-label">ASST</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── CALL 43 ── -->
+  <div class="call-row">
+    <div class="tl-line">
+      <div class="tl-dot reject"></div>
+      <div class="tl-connector"></div>
+    </div>
+    <div class="call-card" onclick="toggleCard(this)">
+      <div class="card-header">
+        <span class="call-num">#43</span>
+        <span class="badge R">✕ REJECT</span>
+        <span class="model-tag">sonnet-4-6</span>
+        <span class="card-ts">22s ago</span>
+        <span class="card-tokens">94,800 tokens</span>
+        <span class="card-chevron">›</span>
+      </div>
+      <div class="anatomy-strip">
+        <div class="seg system" style="flex:4"><span class="seg-label">SYS</span></div>
+        <div class="seg tools" style="flex:10"><span class="seg-label">TOOLS</span></div>
+        <div class="seg user-msg active-seg" style="flex:12"><span class="seg-label">USR ✦</span></div>
+        <div class="seg asst-msg" style="flex:8"><span class="seg-label">ASST</span></div>
+        <div class="seg tool-result" style="flex:38"><span class="seg-label">RESULTS ×24</span></div>
+        <div class="seg user-msg" style="flex:15"><span class="seg-label">USR</span></div>
+        <div class="seg asst-msg" style="flex:13"><span class="seg-label">ASST</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="text-align:center;padding:20px 0;font-size:10px;font-family:var(--mono);color:var(--text-dim)">
+    ↑ 43 earlier calls · scroll to load
+  </div>
+
+</div><!-- timeline -->
+</div><!-- page-body -->
+
+<footer class="statusbar">
+  <div class="sb-item"><div class="sdot ok"></div>DB</div>
+  <div class="sb-item"><div class="sdot ws"></div>WebSocket</div>
+  <div class="sb-item">main-agent · 47 calls · session d024e4be</div>
+  <div class="sb-right"><div class="sb-item">ws://localhost:8080/ws/live</div></div>
+</footer>
+
+<script>
+function toggleCard(card) {
+  const chevron = card.querySelector('.card-chevron');
+  const detail  = card.querySelector('.card-detail');
+  if (!detail) return;
+  const open = detail.classList.toggle('visible');
+  card.classList.toggle('expanded', open);
+  chevron.classList.toggle('open', open);
+}
+function toggleField(header) {
+  const items   = header.nextElementSibling;
+  const chevron = header.querySelector('.field-chevron');
+  const open = items.classList.toggle('visible');
+  chevron.classList.toggle('open', open);
+  event.stopPropagation();
+}
+function toggleItem(item) {
+  const content = item.querySelector('.item-content');
+  const chevron = item.querySelector('.item-chevron');
+  if (!content) return;
+  const open = content.classList.toggle('visible');
+  item.classList.toggle('open', open);
+  chevron.classList.toggle('open', open);
+  event.stopPropagation();
+}
+function jumpToField(seg, id) {
+  // In real app: scroll to the relevant field section and expand it
+  event.stopPropagation();
+}
+</script>
+</body>
+</html>

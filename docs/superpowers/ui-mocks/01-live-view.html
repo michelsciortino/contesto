@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Governor — Live Dashboard</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+
+  :root {
+    --bg-void:     #070a0f;
+    --bg-surface:  #0c1018;
+    --bg-raised:   #111822;
+    --bg-card:     #131b24;
+    --border:      rgba(255,255,255,0.055);
+    --border-hi:   rgba(255,255,255,0.11);
+
+    --cyan:   #00f5ff;
+    --green:  #39ff14;
+    --amber:  #ffaa00;
+    --red:    #ff2d55;
+    --purple: #c263ff;
+    --blue:   #4d9fff;
+
+    --cyan-bg:   rgba(0,245,255,0.07);
+    --green-bg:  rgba(57,255,20,0.07);
+    --amber-bg:  rgba(255,170,0,0.09);
+    --red-bg:    rgba(255,45,85,0.09);
+    --purple-bg: rgba(194,99,255,0.09);
+
+    --text:     #dce8f0;
+    --text-sec: #7a93a8;
+    --text-dim: #3d5264;
+    --mono: 'JetBrains Mono', monospace;
+    --ui:   'Space Grotesk', sans-serif;
+
+    --sidebar-w: 180px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg-void); color: var(--text); font-family: var(--ui); min-height: 100vh; overflow-x: hidden; }
+
+  /* scanlines */
+  body::after {
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:9999;
+    background: repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,0.025) 3px,rgba(0,0,0,0.025) 4px);
+  }
+
+  /* ambient */
+  .glow-tl { position:fixed; top:-300px; left:-200px; width:700px; height:600px; border-radius:50%;
+    background: radial-gradient(ellipse, rgba(0,245,255,0.035) 0%, transparent 65%); pointer-events:none; }
+  .glow-br { position:fixed; bottom:-300px; right:-100px; width:600px; height:600px; border-radius:50%;
+    background: radial-gradient(ellipse, rgba(194,99,255,0.025) 0%, transparent 65%); pointer-events:none; }
+
+  /* ─── SIDEBAR ─── */
+  .sidebar {
+    position: fixed; top: 0; left: 0; width: var(--sidebar-w); height: 100vh;
+    background: var(--bg-surface); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; padding: 0; z-index: 100;
+  }
+
+  .sidebar-brand {
+    display: flex; align-items: center; gap: 10px;
+    padding: 16px 16px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .brand-mark {
+    width: 28px; height: 28px; border-radius: 7px; flex-shrink: 0;
+    background: linear-gradient(135deg, var(--cyan), var(--purple));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 800; color: #000;
+    box-shadow: 0 0 14px rgba(0,245,255,0.35);
+  }
+  .brand-name { font-size: 14px; font-weight: 700; color: var(--text); letter-spacing: 0.03em; }
+  .brand-version { font-size: 9px; font-family: var(--mono); color: var(--text-dim); margin-top: 1px; }
+
+  .nav-section-label {
+    font-size: 9px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--text-dim); padding: 16px 16px 6px;
+  }
+
+  .nav-item {
+    display: flex; align-items: center; gap: 9px;
+    padding: 8px 14px; margin: 1px 8px; border-radius: 7px;
+    cursor: pointer; color: var(--text-sec); font-size: 13px; font-weight: 500;
+    transition: all 0.15s; position: relative;
+  }
+  .nav-item:hover { background: rgba(255,255,255,0.04); color: var(--text); }
+  .nav-item.active {
+    background: var(--cyan-bg); color: var(--cyan);
+    box-shadow: inset 0 0 0 1px rgba(0,245,255,0.15);
+  }
+  .nav-item.active::before {
+    content:''; position:absolute; left:-8px; top:50%; transform:translateY(-50%);
+    width:3px; height:18px; background:var(--cyan); border-radius:0 2px 2px 0;
+    box-shadow: 0 0 8px var(--cyan);
+  }
+  .nav-icon { font-size: 15px; width: 18px; text-align: center; flex-shrink: 0; }
+  .nav-label { flex: 1; }
+  .nav-badge {
+    font-size: 9px; font-family: var(--mono); padding: 1px 5px;
+    background: var(--red-bg); color: var(--red); border-radius: 3px;
+    border: 1px solid rgba(255,45,85,0.2);
+  }
+
+  .sidebar-bottom {
+    margin-top: auto; padding: 12px 8px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* ─── MAIN ─── */
+  .main { margin-left: var(--sidebar-w); min-height: 100vh; display: flex; flex-direction: column; }
+
+  /* topbar */
+  .topbar {
+    height: 48px; background: var(--bg-surface); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; padding: 0 18px; gap: 12px;
+    position: sticky; top: 0; z-index: 50;
+  }
+  .topbar-crumb { font-size: 12px; color: var(--text-dim); }
+  .topbar-page { font-size: 13px; font-weight: 600; color: var(--text); }
+  .sep { color: var(--text-dim); }
+  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+  .pill {
+    display: flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 20px;
+    font-size: 10px; font-weight: 600; font-family: var(--mono);
+    letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .pill-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+  .pill.ws   { background: var(--green-bg); color: var(--green); border: 1px solid rgba(57,255,20,0.2); }
+  .pill.ws .pill-dot { animation: blink 2s infinite; }
+
+  .pill.rec  { background: var(--red-bg); color: var(--red); border: 1px solid rgba(255,45,85,0.3);
+    animation: rec-glow 1.8s infinite; }
+
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.4} }
+  @keyframes rec-glow { 0%,100%{box-shadow:0 0 8px rgba(255,45,85,0.1)} 50%{box-shadow:0 0 16px rgba(255,45,85,0.3)} }
+
+  .btn-sm {
+    display: flex; align-items: center; gap: 5px;
+    padding: 5px 11px; border-radius: 6px; cursor: pointer; border: 1px solid;
+    font-size: 11px; font-weight: 600; font-family: var(--mono); letter-spacing: 0.05em;
+    transition: all 0.15s;
+  }
+  .btn-stop { background: var(--red-bg); color: var(--red); border-color: rgba(255,45,85,0.3); }
+  .btn-stop:hover { background: rgba(255,45,85,0.18); }
+
+  /* ─── CONTENT ─── */
+  .content { padding: 16px; flex: 1; display: flex; flex-direction: column; gap: 14px; }
+
+  /* stat cards */
+  .stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; }
+  .stat {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 9px;
+    padding: 13px 15px; position: relative; overflow: hidden;
+  }
+  .stat::after {
+    content:''; position:absolute; top:0; left:0; right:0; height:1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  }
+  .stat.c1 { --accent: var(--cyan); }
+  .stat.c2 { --accent: var(--amber); }
+  .stat.c3 { --accent: var(--green); }
+  .stat.c4 { --accent: var(--red); }
+
+  .stat-label { font-size: 9px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 7px; }
+  .stat-num { font-family: var(--mono); font-size: 26px; font-weight: 700; line-height: 1; color: var(--accent); text-shadow: 0 0 18px var(--accent); }
+  .stat-sub { font-size: 10px; color: var(--text-dim); font-family: var(--mono); margin-top: 3px; }
+
+  /* ─── SPLIT LAYOUT ─── */
+  .dashboard-body { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; gap: 12px; flex: 1; }
+
+  /* Agent graph */
+  .graph-panel {
+    grid-column: 1; grid-row: 1;
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 9px;
+    overflow: hidden; min-height: 320px; position: relative;
+  }
+
+  .panel-title-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 9px 13px; border-bottom: 1px solid var(--border);
+    background: var(--bg-raised);
+  }
+  .panel-title { font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-sec); }
+  .panel-meta { font-size: 10px; font-family: var(--mono); color: var(--text-dim); }
+
+  /* ReactFlow canvas mockup */
+  .graph-canvas {
+    position: relative; width: 100%; height: calc(100% - 36px);
+    background:
+      radial-gradient(ellipse at 30% 40%, rgba(0,245,255,0.03) 0%, transparent 60%),
+      radial-gradient(ellipse at 75% 70%, rgba(194,99,255,0.03) 0%, transparent 50%);
+  }
+
+  /* Grid dots */
+  .graph-canvas::before {
+    content:''; position:absolute; inset:0;
+    background-image: radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  /* SVG edges */
+  .graph-svg { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; overflow:visible; }
+
+  /* Agent nodes */
+  .agent-node {
+    position: absolute; border-radius: 10px; border: 1px solid;
+    padding: 8px 12px; min-width: 130px; cursor: pointer;
+    transition: all 0.2s; backdrop-filter: blur(4px);
+    font-size: 11px;
+  }
+  .agent-node:hover { transform: translateY(-2px); }
+
+  .agent-node.root {
+    background: rgba(0,245,255,0.08); border-color: rgba(0,245,255,0.3);
+    box-shadow: 0 0 20px rgba(0,245,255,0.12), inset 0 1px 0 rgba(0,245,255,0.15);
+  }
+  .agent-node.child {
+    background: rgba(194,99,255,0.08); border-color: rgba(194,99,255,0.3);
+    box-shadow: 0 0 16px rgba(194,99,255,0.1), inset 0 1px 0 rgba(194,99,255,0.12);
+  }
+  .agent-node.leaf {
+    background: rgba(77,159,255,0.08); border-color: rgba(77,159,255,0.3);
+    box-shadow: 0 0 14px rgba(77,159,255,0.1);
+  }
+
+  .node-label { font-weight: 600; font-family: var(--mono); font-size: 10px; margin-bottom: 4px; }
+  .agent-node.root .node-label { color: var(--cyan); }
+  .agent-node.child .node-label { color: var(--purple); }
+  .agent-node.leaf .node-label { color: var(--blue); }
+
+  .node-model { font-size: 9px; color: var(--text-dim); font-family: var(--mono); }
+
+  .node-status {
+    position: absolute; top: -4px; right: -4px;
+    width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--bg-card);
+  }
+  .node-status.mutated { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+  .node-status.proceed { background: var(--green); box-shadow: 0 0 5px var(--green); }
+  .node-status.reject  { background: var(--red);   box-shadow: 0 0 6px var(--red); }
+
+  .node-tokens { font-size: 8px; font-family: var(--mono); color: var(--text-dim); margin-top: 5px; }
+  .token-mini-bar { height: 2px; border-radius: 1px; margin-top: 2px; background: rgba(255,255,255,0.06); }
+  .token-mini-fill { height: 100%; border-radius: 1px; }
+
+  /* session badge */
+  .session-badge {
+    position: absolute; top: 10px; left: 10px;
+    font-size: 9px; font-family: var(--mono);
+    background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+    padding: 3px 7px; border-radius: 4px; color: var(--text-dim);
+  }
+
+  /* graph legend */
+  .graph-legend {
+    position: absolute; bottom: 10px; right: 10px;
+    display: flex; gap: 10px; align-items: center;
+    background: rgba(7,10,15,0.7); border: 1px solid var(--border);
+    padding: 5px 10px; border-radius: 6px; backdrop-filter: blur(8px);
+  }
+  .legend-item { display: flex; align-items: center; gap: 4px; font-size: 9px; color: var(--text-dim); font-family: var(--mono); }
+  .legend-dot { width: 7px; height: 7px; border-radius: 50%; }
+
+  /* ─── TABLE PANEL ─── */
+  .table-panel {
+    grid-column: 2; grid-row: 1 / 3;
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 9px;
+    overflow: hidden; display: flex; flex-direction: column;
+  }
+
+  /* search bar */
+  .search-bar {
+    padding: 8px 12px; border-bottom: 1px solid var(--border);
+    display: flex; gap: 8px; align-items: center;
+    background: var(--bg-raised);
+  }
+  .search-input-wrap {
+    flex: 1; display: flex; align-items: center; gap: 6px;
+    background: var(--bg-void); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 9px;
+  }
+  .search-input-wrap input {
+    background: none; border: none; outline: none; color: var(--text);
+    font-family: var(--mono); font-size: 11px; width: 100%;
+  }
+  .search-input-wrap input::placeholder { color: var(--text-dim); }
+  .search-icon { color: var(--text-dim); font-size: 11px; }
+
+  .filter-chip {
+    display: flex; align-items: center; gap: 4px;
+    padding: 3px 8px; border-radius: 4px; cursor: pointer;
+    font-size: 10px; font-family: var(--mono); font-weight: 600;
+    transition: all 0.15s;
+  }
+  .filter-chip.all   { background: rgba(255,255,255,0.06); color: var(--text-sec); border: 1px solid var(--border); }
+  .filter-chip.mut   { background: var(--amber-bg); color: var(--amber); border: 1px solid rgba(255,170,0,0.2); }
+  .filter-chip.proc  { background: rgba(255,255,255,0.04); color: var(--text-dim); border: 1px solid var(--border); }
+  .filter-chip.rej   { background: var(--red-bg); color: var(--red); border: 1px solid rgba(255,45,85,0.2); }
+
+  .trace-table-scroll { overflow-y: auto; flex: 1; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th {
+    padding: 8px 12px; text-align: left; font-size: 9px; font-weight: 600;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim);
+    background: var(--bg-raised); border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; white-space: nowrap;
+  }
+  td { padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.025); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr { transition: background 0.12s; cursor: pointer; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  tr.flash td { animation: row-in 0.6s ease-out; }
+  @keyframes row-in { 0%{background:rgba(0,245,255,0.07)} 100%{background:transparent} }
+
+  .trace-id { font-family: var(--mono); color: var(--cyan); font-size: 10px; }
+
+  .badge { display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border-radius:3px;
+    font-family:var(--mono); font-size:9px; font-weight:700; letter-spacing:0.08em; white-space:nowrap; }
+  .badge.M { background:var(--amber-bg); color:var(--amber); border:1px solid rgba(255,170,0,0.2); }
+  .badge.P { background:rgba(255,255,255,0.05); color:var(--text-dim); border:1px solid var(--border); }
+  .badge.R { background:var(--red-bg); color:var(--red); border:1px solid rgba(255,45,85,0.2); }
+
+  .model-tag { font-family:var(--mono); font-size:10px; color:var(--text-sec);
+    background:rgba(255,255,255,0.04); padding:1px 6px; border-radius:3px; border:1px solid var(--border); }
+
+  .wbar-wrap { min-width:90px; }
+  .wbar-bg { height:3px; background:rgba(255,255,255,0.06); border-radius:2px; overflow:hidden; margin-bottom:2px; }
+  .wbar { height:100%; border-radius:2px; }
+  .wbar.lo { background:var(--green); box-shadow:0 0 5px rgba(57,255,20,0.5); }
+  .wbar.mi { background:var(--amber); box-shadow:0 0 5px rgba(255,170,0,0.5); }
+  .wbar.hi { background:var(--red);   box-shadow:0 0 5px rgba(255,45,85,0.5); }
+  .wbar-lbl { font-family:var(--mono); font-size:9px; color:var(--text-dim); }
+
+  .rule-tag { font-size:9px; font-family:var(--mono); padding:1px 5px; border-radius:3px;
+    background:var(--purple-bg); color:var(--purple); border:1px solid rgba(194,99,255,0.2); }
+  .ts { font-family:var(--mono); font-size:10px; color:var(--text-dim); }
+
+  /* ─── Sessions panel ─── */
+  .sessions-panel {
+    grid-column: 1; grid-row: 2;
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 9px;
+    overflow: hidden;
+  }
+  .sess-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 13px; border-bottom: 1px solid rgba(255,255,255,0.025);
+    cursor: pointer; transition: background 0.12s;
+  }
+  .sess-item:last-child { border-bottom: none; }
+  .sess-item:hover { background: rgba(255,255,255,0.02); }
+  .sess-item.active { background: var(--cyan-bg); border-left: 2px solid var(--cyan); padding-left: 11px; }
+  .sess-id { font-family:var(--mono); font-size:10px; color:var(--cyan); }
+  .sess-meta { font-family:var(--mono); font-size:9px; color:var(--text-dim); display:flex; gap:8px; margin-top:2px; }
+  .rec-live { font-size:9px; padding:1px 5px; border-radius:3px; background:var(--red-bg); color:var(--red);
+    border:1px solid rgba(255,45,85,0.25); font-family:var(--mono); animation:rec-glow 1.8s infinite; }
+  .sess-icon { font-size:18px; color:var(--text-dim); }
+
+  /* ─── Slide-over modal ─── */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 200;
+    display: flex; justify-content: flex-end;
+    backdrop-filter: blur(2px);
+  }
+  .slideover {
+    width: 540px; height: 100%; background: var(--bg-surface);
+    border-left: 1px solid var(--border-hi);
+    display: flex; flex-direction: column;
+    box-shadow: -20px 0 60px rgba(0,0,0,0.4);
+    animation: slide-in 0.22s ease-out;
+  }
+  @keyframes slide-in { from{transform:translateX(40px);opacity:0} to{transform:translateX(0);opacity:1} }
+
+  .slideover-header {
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px; background: var(--bg-raised);
+  }
+  .slideover-title { font-size: 12px; font-weight: 600; color: var(--text); flex: 1; }
+  .slideover-id { font-family:var(--mono); font-size:11px; color:var(--cyan); }
+  .btn-icon {
+    width:28px; height:28px; border-radius:6px; display:flex; align-items:center; justify-content:center;
+    cursor:pointer; border:1px solid var(--border); background:rgba(255,255,255,0.04);
+    color:var(--text-sec); font-size:13px; transition:all 0.15s;
+  }
+  .btn-icon:hover { background:rgba(255,255,255,0.08); color:var(--text); }
+  .btn-open-tab { border-color:rgba(0,245,255,0.25); color:var(--cyan); font-size:11px; width:auto; padding:0 9px; gap:4px; font-family:var(--mono); font-size:10px; font-weight:600; }
+  .btn-open-tab:hover { background:var(--cyan-bg); }
+
+  .slideover-body { flex:1; overflow-y:auto; padding:16px 18px; display:flex; flex-direction:column; gap:14px; }
+
+  .so-section-title { font-size:9px; font-weight:600; letter-spacing:0.12em; text-transform:uppercase;
+    color:var(--text-dim); margin-bottom:8px; }
+
+  .meta-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .meta-item { background:var(--bg-raised); border:1px solid var(--border); border-radius:6px; padding:8px 10px; }
+  .meta-item-label { font-size:9px; color:var(--text-dim); font-family:var(--mono); letter-spacing:0.08em; text-transform:uppercase; margin-bottom:3px; }
+  .meta-item-val { font-size:11px; font-family:var(--mono); color:var(--text); }
+
+  /* diff view */
+  .diff-wrap { background:var(--bg-raised); border:1px solid var(--border); border-radius:7px; overflow:hidden; }
+  .diff-tabs { display:flex; border-bottom:1px solid var(--border); }
+  .diff-tab { padding:7px 14px; font-size:10px; font-weight:600; font-family:var(--mono); cursor:pointer;
+    color:var(--text-dim); border-bottom:2px solid transparent; margin-bottom:-1px; transition:all 0.15s; }
+  .diff-tab.active { color:var(--cyan); border-bottom-color:var(--cyan); }
+  .diff-content { padding:12px; font-family:var(--mono); font-size:10px; line-height:1.6; max-height:200px; overflow-y:auto; }
+
+  .diff-line { padding:1px 4px; border-radius:2px; }
+  .diff-line.del { background:rgba(255,45,85,0.08); color:var(--red); }
+  .diff-line.del::before { content:'- '; opacity:0.5; }
+  .diff-line.add { background:rgba(57,255,20,0.06); color:var(--green); }
+  .diff-line.add::before { content:'+ '; opacity:0.5; }
+  .diff-line.ctx { color:var(--text-dim); }
+
+  /* mutation steps */
+  .steps-list { display:flex; flex-direction:column; gap:6px; }
+  .step-item {
+    background:var(--bg-raised); border:1px solid var(--border); border-radius:6px;
+    padding:8px 10px; display:flex; align-items:center; gap:10px;
+  }
+  .step-num { width:18px; height:18px; border-radius:50%; background:var(--purple-bg); border:1px solid rgba(194,99,255,0.25);
+    display:flex; align-items:center; justify-content:center; font-size:9px; font-family:var(--mono); color:var(--purple); flex-shrink:0; }
+  .step-info { flex:1; }
+  .step-rule { font-size:10px; font-family:var(--mono); color:var(--purple); font-weight:600; }
+  .step-detail { font-size:9px; color:var(--text-dim); font-family:var(--mono); margin-top:1px; }
+  .step-priority { font-size:9px; font-family:var(--mono); color:var(--text-dim);
+    background:rgba(255,255,255,0.04); border:1px solid var(--border); padding:1px 5px; border-radius:3px; }
+
+  /* ─── STATUS BAR ─── */
+  .statusbar {
+    height:22px; background:var(--bg-surface); border-top:1px solid var(--border);
+    display:flex; align-items:center; padding:0 16px; gap:14px;
+    position:sticky; bottom:0;
+  }
+  .sbar-item { display:flex; align-items:center; gap:4px; font-size:9px; font-family:var(--mono); color:var(--text-dim); }
+  .sdot { width:5px; height:5px; border-radius:50%; }
+  .sdot.ok  { background:var(--green); box-shadow:0 0 4px var(--green); }
+  .sdot.ws  { background:var(--cyan);  box-shadow:0 0 4px var(--cyan); animation:blink 2s infinite; }
+  .sbar-right { margin-left:auto; display:flex; gap:14px; }
+</style>
+</head>
+<body>
+
+<div class="glow-tl"></div>
+<div class="glow-br"></div>
+
+<!-- ─── SIDEBAR ─── -->
+<nav class="sidebar">
+  <div class="sidebar-brand">
+    <div class="brand-mark">G</div>
+    <div>
+      <div class="brand-name">Governor</div>
+      <div class="brand-version">v0.2.0</div>
+    </div>
+  </div>
+
+  <div class="nav-section-label">Monitor</div>
+  <div class="nav-item active">
+    <span class="nav-icon">◉</span>
+    <span class="nav-label">Live View</span>
+    <span class="nav-badge">REC</span>
+  </div>
+  <div class="nav-item">
+    <span class="nav-icon">◎</span>
+    <span class="nav-label">Recordings</span>
+  </div>
+  <div class="nav-item">
+    <span class="nav-icon">≋</span>
+    <span class="nav-label">Traces</span>
+  </div>
+
+  <div class="nav-section-label">Configure</div>
+  <div class="nav-item">
+    <span class="nav-icon">⊞</span>
+    <span class="nav-label">Rules</span>
+  </div>
+
+  <div class="sidebar-bottom">
+    <div class="nav-item">
+      <span class="nav-icon">⚙</span>
+      <span class="nav-label">Settings</span>
+    </div>
+  </div>
+</nav>
+
+<!-- ─── MAIN ─── -->
+<div class="main">
+
+  <header class="topbar">
+    <span class="topbar-crumb">Governor</span>
+    <span class="sep">›</span>
+    <span class="topbar-page">Live View</span>
+    <div class="topbar-right">
+      <div class="pill ws"><div class="pill-dot"></div>WS Connected</div>
+      <div class="pill rec"><div class="pill-dot"></div>Recording · 02:14</div>
+      <div class="btn-sm btn-stop">⬛ Stop</div>
+    </div>
+  </header>
+
+  <main class="content">
+
+    <!-- Stat cards -->
+    <div class="stats">
+      <div class="stat c1">
+        <div class="stat-label">Intercepted</div>
+        <div class="stat-num">1,247</div>
+        <div class="stat-sub">this session</div>
+      </div>
+      <div class="stat c2">
+        <div class="stat-label">Mutated</div>
+        <div class="stat-num">384</div>
+        <div class="stat-sub">30.8% of traffic</div>
+      </div>
+      <div class="stat c3">
+        <div class="stat-label">Tokens Saved</div>
+        <div class="stat-num">218k</div>
+        <div class="stat-sub">est. across session</div>
+      </div>
+      <div class="stat c4">
+        <div class="stat-label">Rejected</div>
+        <div class="stat-num">3</div>
+        <div class="stat-sub">blocked by rules</div>
+      </div>
+    </div>
+
+    <!-- Dashboard body -->
+    <div class="dashboard-body">
+
+      <!-- ─── Agent Graph ─── -->
+      <div class="graph-panel">
+        <div class="panel-title-bar">
+          <span class="panel-title">Agent Hierarchy · Real-time</span>
+          <span class="panel-meta">session d024e4be · 4 agents</span>
+        </div>
+        <div class="graph-canvas">
+          <div class="session-badge">session: d024e4be…</div>
+
+          <!-- SVG edges -->
+          <svg class="graph-svg">
+            <!-- root → child-a -->
+            <path d="M 165 85 Q 165 140 95 155" stroke="rgba(0,245,255,0.25)" stroke-width="1.5" fill="none" stroke-dasharray="4 3"/>
+            <!-- root → child-b -->
+            <path d="M 195 85 Q 240 130 270 150" stroke="rgba(0,245,255,0.25)" stroke-width="1.5" fill="none" stroke-dasharray="4 3"/>
+            <!-- child-b → leaf -->
+            <path d="M 310 195 Q 345 215 360 235" stroke="rgba(194,99,255,0.2)" stroke-width="1.2" fill="none" stroke-dasharray="3 3"/>
+          </svg>
+
+          <!-- Root orchestrator -->
+          <div class="agent-node root" style="top:30px; left:100px;">
+            <div class="node-status mutated"></div>
+            <div class="node-label">orchestrator</div>
+            <div class="node-model">claude-sonnet-4-6</div>
+            <div class="node-tokens">78k / 200k</div>
+            <div class="token-mini-bar"><div class="token-mini-fill" style="width:39%;background:var(--amber)"></div></div>
+          </div>
+
+          <!-- Child A: research agent -->
+          <div class="agent-node child" style="top:148px; left:20px;">
+            <div class="node-status proceed"></div>
+            <div class="node-label">researcher</div>
+            <div class="node-model">claude-haiku-4-5</div>
+            <div class="node-tokens">12k / 200k</div>
+            <div class="token-mini-bar"><div class="token-mini-fill" style="width:6%;background:var(--green)"></div></div>
+          </div>
+
+          <!-- Child B: coder agent -->
+          <div class="agent-node child" style="top:148px; left:230px;">
+            <div class="node-status mutated"></div>
+            <div class="node-label">coder</div>
+            <div class="node-model">claude-sonnet-4-6</div>
+            <div class="node-tokens">94k / 200k</div>
+            <div class="token-mini-bar"><div class="token-mini-fill" style="width:47%;background:var(--amber)"></div></div>
+          </div>
+
+          <!-- Leaf: test runner (spawned by coder) -->
+          <div class="agent-node leaf" style="top:240px; left:310px;">
+            <div class="node-status reject"></div>
+            <div class="node-label">test-runner</div>
+            <div class="node-model">claude-haiku-4-5</div>
+            <div class="node-tokens">182k / 200k</div>
+            <div class="token-mini-bar"><div class="token-mini-fill" style="width:91%;background:var(--red)"></div></div>
+          </div>
+
+          <!-- Legend -->
+          <div class="graph-legend">
+            <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>Proceed</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div>Mutated</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>Rejected</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── Trace Table ─── -->
+      <div class="table-panel">
+        <div class="panel-title-bar">
+          <span class="panel-title">Live Traces</span>
+          <span class="panel-meta">last 50</span>
+        </div>
+
+        <!-- Search + filters -->
+        <div class="search-bar">
+          <div class="search-input-wrap">
+            <span class="search-icon">⌕</span>
+            <input type="text" placeholder="search by trace id, model, rule…">
+          </div>
+          <div class="filter-chip all">All</div>
+          <div class="filter-chip mut">MUTATED</div>
+          <div class="filter-chip proc">PROCEED</div>
+          <div class="filter-chip rej">REJECT</div>
+        </div>
+
+        <div class="trace-table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Trace</th><th>Action</th><th>Model</th><th>Weight</th><th>Rules</th><th>Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="flash">
+                <td><span class="trace-id">a3f8c…e21d</span></td>
+                <td><span class="badge M">● MUT</span></td>
+                <td><span class="model-tag">sonnet-4-6</span></td>
+                <td class="wbar-wrap"><div class="wbar-bg"><div class="wbar hi" style="width:78%"></div></div><div class="wbar-lbl">78k</div></td>
+                <td><span class="rule-tag">strip-reminder</span></td>
+                <td><span class="ts">now</span></td>
+              </tr>
+              <tr>
+                <td><span class="trace-id">b71a9…f044</span></td>
+                <td><span class="badge P">— PRO</span></td>
+                <td><span class="model-tag">sonnet-4-6</span></td>
+                <td class="wbar-wrap"><div class="wbar-bg"><div class="wbar lo" style="width:12%"></div></div><div class="wbar-lbl">2.4k</div></td>
+                <td><span style="color:var(--text-dim);font-size:9px;font-family:var(--mono)">—</span></td>
+                <td><span class="ts">2s</span></td>
+              </tr>
+              <tr>
+                <td><span class="trace-id">cc02e…8b3a</span></td>
+                <td><span class="badge M">● MUT</span></td>
+                <td><span class="model-tag">opus-4</span></td>
+                <td class="wbar-wrap"><div class="wbar-bg"><div class="wbar mi" style="width:51%"></div></div><div class="wbar-lbl">51k</div></td>
+                <td><span class="rule-tag">truncate-diff</span></td>
+                <td><span class="ts">5s</span></td>
+              </tr>
+              <tr>
+                <td><span class="trace-id">d4e1b…19fc</span></td>
+                <td><span class="badge R">✕ REJ</span></td>
+                <td><span class="model-tag">haiku-4-5</span></td>
+                <td class="wbar-wrap"><div class="wbar-bg"><div class="wbar hi" style="width:94%"></div></div><div class="wbar-lbl">94k</div></td>
+                <td><span class="rule-tag">max-ctx</span></td>
+                <td><span class="ts">9s</span></td>
+              </tr>
+              <tr>
+                <td><span class="trace-id">e9c3d…2af7</span></td>
+                <td><span class="badge P">— PRO</span></td>
+                <td><span class="model-tag">sonnet-4-6</span></td>
+                <td class="wbar-wrap"><div class="wbar-bg"><div class="wbar lo" style="width:8%"></div></div><div class="wbar-lbl">1.6k</div></td>
+                <td><span style="color:var(--text-dim);font-size:9px;font-family:var(--mono)">—</span></td>
+                <td><span class="ts">14s</span></td>
+              </tr>
+              <tr>
+                <td><span class="trace-id">f2b8a…77e1</span></td>
+                <td><span class="badge M">● MUT</span></td>
+                <td><span class="model-tag">sonnet-4-6</span></td>
+                <td class="wbar-wrap"><div class="wbar-bg"><div class="wbar mi" style="width:43%"></div></div><div class="wbar-lbl">43k</div></td>
+                <td><span class="rule-tag">strip-reminder</span></td>
+                <td><span class="ts">21s</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ─── Sessions panel ─── -->
+      <div class="sessions-panel">
+        <div class="panel-title-bar">
+          <span class="panel-title">Recording Sessions</span>
+          <span class="panel-meta">3 total</span>
+        </div>
+        <div class="sess-item active">
+          <span class="sess-icon">◉</span>
+          <div style="flex:1">
+            <div style="display:flex;align-items:center;gap:7px">
+              <span class="sess-id">a1b2c3d4…</span>
+              <span class="rec-live">● LIVE</span>
+            </div>
+            <div class="sess-meta"><span>02:14 elapsed</span><span>1,247 traces</span></div>
+          </div>
+        </div>
+        <div class="sess-item">
+          <span class="sess-icon">◎</span>
+          <div style="flex:1">
+            <span class="sess-id">f8e9d7c6…</span>
+            <div class="sess-meta"><span>12:34</span><span>3,891 traces</span></div>
+          </div>
+        </div>
+        <div class="sess-item">
+          <span class="sess-icon">◎</span>
+          <div style="flex:1">
+            <span class="sess-id">2a3b4c5d…</span>
+            <div class="sess-meta"><span>08:17</span><span>2,104 traces</span></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- dashboard-body -->
+  </main>
+
+  <footer class="statusbar">
+    <div class="sbar-item"><div class="sdot ok"></div>DB</div>
+    <div class="sbar-item"><div class="sdot ok"></div>Redis</div>
+    <div class="sbar-item"><div class="sdot ws"></div>WebSocket</div>
+    <div class="sbar-right">
+      <div class="sbar-item">ws://localhost:8080/ws/live</div>
+      <div class="sbar-item">Governor Control Plane v0.2</div>
+    </div>
+  </footer>
+
+</div><!-- main -->
+
+<!-- ─── Slide-over (trace detail) ─── -->
+<div class="modal-overlay">
+  <div class="slideover">
+    <div class="slideover-header">
+      <div>
+        <div class="slideover-title">Trace Detail</div>
+        <div class="slideover-id">a3f8c1d2-…-e21d</div>
+      </div>
+      <div class="btn-icon btn-open-tab">↗ Open tab</div>
+      <div class="btn-icon" style="margin-left:4px">✕</div>
+    </div>
+
+    <div class="slideover-body">
+
+      <!-- Meta -->
+      <div>
+        <div class="so-section-title">Metadata</div>
+        <div class="meta-grid">
+          <div class="meta-item"><div class="meta-item-label">Action</div><div class="meta-item-val" style="color:var(--amber)">MUTATED</div></div>
+          <div class="meta-item"><div class="meta-item-label">Model</div><div class="meta-item-val">claude-sonnet-4-6</div></div>
+          <div class="meta-item"><div class="meta-item-label">Tokens (original)</div><div class="meta-item-val">78,240</div></div>
+          <div class="meta-item"><div class="meta-item-label">Tokens (final)</div><div class="meta-item-val" style="color:var(--green)">41,130 <span style="font-size:9px;color:var(--green)">−47%</span></div></div>
+          <div class="meta-item"><div class="meta-item-label">Session</div><div class="meta-item-val">d024e4be…</div></div>
+          <div class="meta-item"><div class="meta-item-label">Recorded</div><div class="meta-item-val">just now</div></div>
+        </div>
+      </div>
+
+      <!-- Mutation steps -->
+      <div>
+        <div class="so-section-title">Mutation Steps (2)</div>
+        <div class="steps-list">
+          <div class="step-item">
+            <div class="step-num">1</div>
+            <div class="step-info">
+              <div class="step-rule">strip-system-reminder</div>
+              <div class="step-detail">strip_tag · &lt;system-reminder&gt; · removed 4 blocks</div>
+            </div>
+            <div class="step-priority">p:10</div>
+          </div>
+          <div class="step-item">
+            <div class="step-num">2</div>
+            <div class="step-info">
+              <div class="step-rule">truncate-git-diff</div>
+              <div class="step-detail">truncate_after · 8000 chars · applied to 2 messages</div>
+            </div>
+            <div class="step-priority">p:20</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Payload diff -->
+      <div>
+        <div class="so-section-title">Payload Diff</div>
+        <div class="diff-wrap">
+          <div class="diff-tabs">
+            <div class="diff-tab active">Messages[0]</div>
+            <div class="diff-tab">Messages[1]</div>
+          </div>
+          <div class="diff-content">
+            <div class="diff-line ctx">{"role": "user", "content": [</div>
+            <div class="diff-line del">  &lt;system-reminder&gt;You have superpowers. IMPORTANT: ...</div>
+            <div class="diff-line del">  Always invoke the Skill tool before responding...&lt;/system-reminder&gt;</div>
+            <div class="diff-line add">  [removed by strip-system-reminder]</div>
+            <div class="diff-line ctx">  "hi"</div>
+            <div class="diff-line ctx">]}</div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- slideover-body -->
+  </div>
+</div>
+
+</body>
+</html>

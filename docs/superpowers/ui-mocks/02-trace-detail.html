@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Governor — Trace Detail Slide-over refinement</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+  :root {
+    --bg-void:    #070a0f;
+    --bg-surface: #0c1018;
+    --bg-raised:  #111822;
+    --bg-card:    #131b24;
+    --border:     rgba(255,255,255,0.055);
+    --border-hi:  rgba(255,255,255,0.11);
+
+    --cyan:   #00f5ff;
+    --green:  #39ff14;
+    --amber:  #ffaa00;
+    --red:    #ff2d55;
+    --purple: #c263ff;
+    --blue:   #4d9fff;
+
+    --cyan-bg:   rgba(0,245,255,0.07);
+    --green-bg:  rgba(57,255,20,0.07);
+    --amber-bg:  rgba(255,170,0,0.09);
+    --red-bg:    rgba(255,45,85,0.09);
+    --purple-bg: rgba(194,99,255,0.09);
+
+    --text:     #dce8f0; --text-sec: #7a93a8; --text-dim: #3d5264;
+    --mono: 'JetBrains Mono', monospace;
+    --ui:   'Space Grotesk', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #1a2230;
+    font-family: var(--ui);
+    display: flex; justify-content: flex-end;
+    min-height: 100vh;
+  }
+
+  /* ── Slide-over panel ── */
+  .slideover {
+    width: 620px; min-height: 100vh;
+    background: var(--bg-surface);
+    border-left: 1px solid var(--border-hi);
+    display: flex; flex-direction: column;
+    box-shadow: -24px 0 64px rgba(0,0,0,0.5);
+  }
+
+  /* Header */
+  .so-header {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-raised);
+    display: flex; flex-direction: column; gap: 8px;
+    flex-shrink: 0;
+  }
+  .so-header-top {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .so-title { font-size: 13px; font-weight: 600; color: var(--text); flex: 1; }
+  .btn-icon {
+    display: flex; align-items: center; gap: 5px;
+    padding: 4px 10px; border-radius: 6px; cursor: pointer;
+    border: 1px solid; font-family: var(--mono); font-size: 10px;
+    font-weight: 600; letter-spacing: 0.04em; transition: all 0.15s;
+    color: var(--cyan); border-color: rgba(0,245,255,0.25);
+    background: var(--cyan-bg);
+  }
+  .btn-icon:hover { background: rgba(0,245,255,0.12); }
+  .btn-close {
+    width: 26px; height: 26px; border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; border: 1px solid var(--border);
+    background: rgba(255,255,255,0.04); color: var(--text-sec); font-size: 14px;
+  }
+
+  /* Meta pills row */
+  .so-meta {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .meta-pill {
+    display: flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 4px;
+    font-family: var(--mono); font-size: 10px; font-weight: 600;
+  }
+  .meta-pill.action-M { background: var(--amber-bg); color: var(--amber); border: 1px solid rgba(255,170,0,0.25); }
+  .meta-pill.model    { background: rgba(255,255,255,0.05); color: var(--text-sec); border: 1px solid var(--border); }
+  .meta-pill.session  { background: var(--cyan-bg); color: var(--cyan); border: 1px solid rgba(0,245,255,0.2); }
+  .meta-pill.tokens   { background: var(--green-bg); color: var(--green); border: 1px solid rgba(57,255,20,0.2); }
+
+  /* Section tabs */
+  .so-tabs {
+    display: flex; border-bottom: 1px solid var(--border);
+    background: var(--bg-raised); overflow-x: auto;
+    flex-shrink: 0;
+  }
+  .so-tab {
+    padding: 9px 14px; font-size: 11px; font-weight: 600;
+    color: var(--text-dim); cursor: pointer; white-space: nowrap;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+    transition: all 0.15s; display: flex; align-items: center; gap: 6px;
+  }
+  .so-tab:hover { color: var(--text-sec); }
+  .so-tab.active { color: var(--cyan); border-bottom-color: var(--cyan); }
+  .tab-badge {
+    font-size: 9px; padding: 1px 5px; border-radius: 3px;
+    background: rgba(255,255,255,0.06); color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .tab-badge.changed { background: var(--amber-bg); color: var(--amber); }
+
+  /* Body */
+  .so-body {
+    flex: 1; overflow-y: auto; padding: 16px 18px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+
+  /* Section label */
+  .sec-label {
+    font-size: 9px; font-weight: 700; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--text-dim);
+    margin-bottom: 8px; display: flex; align-items: center; gap: 8px;
+  }
+  .sec-label::after { content:''; flex:1; height:1px; background:var(--border); }
+
+  /* ── Scalar comparison table ── */
+  .scalar-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .scalar-table th {
+    padding: 6px 10px; text-align: left; font-size: 9px; font-weight: 600;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim);
+    background: var(--bg-raised); border-bottom: 1px solid var(--border);
+  }
+  .scalar-table td {
+    padding: 7px 10px; border-bottom: 1px solid rgba(255,255,255,0.025);
+    vertical-align: top;
+  }
+  .scalar-table tr:last-child td { border-bottom: none; }
+  .scalar-table tr.changed { background: rgba(255,170,0,0.04); }
+  .field-name { font-family: var(--mono); font-size: 10px; color: var(--text-sec); }
+  .field-orig { font-family: var(--mono); font-size: 10px; color: var(--text-dim); text-decoration: line-through; }
+  .field-final { font-family: var(--mono); font-size: 10px; color: var(--green); }
+  .field-same { font-family: var(--mono); font-size: 10px; color: var(--text-dim); }
+  .change-arrow { color: var(--amber); font-size: 10px; }
+
+  /* ── Diff block (for tools / system / messages) ── */
+  .diff-block {
+    background: var(--bg-raised); border: 1px solid var(--border);
+    border-radius: 8px; overflow: hidden; margin-bottom: 10px;
+  }
+  .diff-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 7px 12px; border-bottom: 1px solid var(--border);
+    background: rgba(255,255,255,0.02); cursor: pointer;
+  }
+  .diff-block-title {
+    font-family: var(--mono); font-size: 10px; font-weight: 600;
+    color: var(--text-sec); display: flex; align-items: center; gap: 7px;
+  }
+  .diff-block-badge {
+    font-size: 9px; padding: 1px 6px; border-radius: 3px;
+    font-family: var(--mono); font-weight: 600;
+  }
+  .diff-block-badge.removed  { background: var(--red-bg);    color: var(--red);    border: 1px solid rgba(255,45,85,0.2); }
+  .diff-block-badge.added    { background: var(--green-bg);  color: var(--green);  border: 1px solid rgba(57,255,20,0.2); }
+  .diff-block-badge.modified { background: var(--amber-bg);  color: var(--amber);  border: 1px solid rgba(255,170,0,0.2); }
+  .diff-block-badge.unchanged{ background: rgba(255,255,255,0.05); color: var(--text-dim); border:1px solid var(--border); }
+  .diff-chevron { font-size: 10px; color: var(--text-dim); transition: transform 0.15s; }
+  .diff-chevron.open { transform: rotate(90deg); }
+
+  .diff-content {
+    padding: 10px 12px;
+    font-family: var(--mono); font-size: 10px; line-height: 1.7;
+    max-height: 240px; overflow-y: auto;
+  }
+  .diff-line { padding: 0 4px; border-radius: 2px; white-space: pre-wrap; word-break: break-all; }
+  .diff-line.del {
+    background: rgba(255,45,85,0.08); color: #ff6b85;
+    border-left: 2px solid rgba(255,45,85,0.4);
+    margin-bottom: 1px;
+  }
+  .diff-line.del::before { content: '− '; opacity: 0.6; }
+  .diff-line.add {
+    background: rgba(57,255,20,0.06); color: #7dff6b;
+    border-left: 2px solid rgba(57,255,20,0.35);
+    margin-bottom: 1px;
+  }
+  .diff-line.add::before { content: '+ '; opacity: 0.6; }
+  .diff-line.ctx { color: var(--text-dim); }
+  .diff-line.ctx::before { content: '  '; }
+
+  /* Collapsed state */
+  .diff-content.collapsed { display: none; }
+
+  /* ── Tools list ── */
+  .tool-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 12px; border-bottom: 1px solid rgba(255,255,255,0.025);
+    font-size: 10px;
+  }
+  .tool-item:last-child { border-bottom: none; }
+  .tool-name { font-family: var(--mono); font-weight: 600; color: var(--text-sec); flex: 1; }
+  .tool-status { font-size: 9px; font-family: var(--mono); }
+  .tool-status.present  { color: var(--green); }
+  .tool-status.removed  { color: var(--red); }
+  .tool-status.added    { color: var(--amber); }
+
+  /* ── Mutation steps ── */
+  .steps-wrap { display: flex; flex-direction: column; gap: 6px; }
+  .step {
+    background: var(--bg-raised); border: 1px solid var(--border);
+    border-radius: 7px; padding: 9px 12px;
+    display: flex; align-items: flex-start; gap: 10px;
+  }
+  .step-num {
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--purple-bg); border: 1px solid rgba(194,99,255,0.3);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-family: var(--mono); color: var(--purple); flex-shrink: 0;
+  }
+  .step-body { flex: 1; }
+  .step-rule  { font-size: 11px; font-family: var(--mono); font-weight: 600; color: var(--purple); }
+  .step-op    { font-size: 10px; color: var(--text-dim); font-family: var(--mono); margin-top: 2px; }
+  .step-tokens {
+    font-size: 10px; font-family: var(--mono); color: var(--green);
+    background: var(--green-bg); border: 1px solid rgba(57,255,20,0.2);
+    padding: 2px 7px; border-radius: 4px; white-space: nowrap; flex-shrink: 0;
+  }
+  .step-priority {
+    font-size: 9px; font-family: var(--mono); color: var(--text-dim);
+    background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+    padding: 2px 6px; border-radius: 3px; white-space: nowrap;
+  }
+
+  /* ── Token summary bar ── */
+  .token-summary {
+    background: var(--bg-raised); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .token-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .token-label { font-size: 10px; color: var(--text-dim); font-family: var(--mono); width: 70px; }
+  .token-bar-bg { flex: 1; height: 5px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; }
+  .token-bar-fill { height: 100%; border-radius: 3px; }
+  .token-bar-fill.orig  { background: var(--amber); box-shadow: 0 0 6px rgba(255,170,0,0.4); }
+  .token-bar-fill.final { background: var(--green);  box-shadow: 0 0 6px rgba(57,255,20,0.4); }
+  .token-val { font-size: 10px; font-family: var(--mono); color: var(--text-sec); width: 50px; text-align: right; }
+  .token-saved {
+    text-align: center; margin-top: 4px;
+    font-size: 11px; font-family: var(--mono); color: var(--green);
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+<div class="slideover">
+
+  <!-- Header -->
+  <div class="so-header">
+    <div class="so-header-top">
+      <div class="so-title">Trace Detail</div>
+      <div class="btn-icon">↗ Open in tab</div>
+      <div class="btn-close">✕</div>
+    </div>
+    <div class="so-meta">
+      <div class="meta-pill action-M">● MUTATED</div>
+      <div class="meta-pill model">claude-sonnet-4-6</div>
+      <div class="meta-pill session">session d024e4be</div>
+      <div class="meta-pill tokens">−47% tokens · 37k saved</div>
+    </div>
+    <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim)">
+      a3f8c1d2-b4e5-4f6a-8c9d-e21d · recorded just now
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="so-tabs">
+    <div class="so-tab active">Summary</div>
+    <div class="so-tab">Scalars <span class="tab-badge">4</span></div>
+    <div class="so-tab">Tools <span class="tab-badge">29</span></div>
+    <div class="so-tab">System <span class="tab-badge changed">2 changed</span></div>
+    <div class="so-tab">Messages <span class="tab-badge changed">3 changed</span></div>
+    <div class="so-tab">Metadata <span class="tab-badge">1</span></div>
+  </div>
+
+  <!-- Body: Summary tab (active) -->
+  <div class="so-body">
+
+    <!-- Token summary -->
+    <div>
+      <div class="sec-label">Token Impact</div>
+      <div class="token-summary">
+        <div class="token-row">
+          <span class="token-label">Original</span>
+          <div class="token-bar-bg"><div class="token-bar-fill orig" style="width:78%"></div></div>
+          <span class="token-val">78,240</span>
+        </div>
+        <div class="token-row" style="margin-bottom:0">
+          <span class="token-label">Final</span>
+          <div class="token-bar-bg"><div class="token-bar-fill final" style="width:41%"></div></div>
+          <span class="token-val">41,130</span>
+        </div>
+        <div class="token-saved">↓ 37,110 tokens removed (47.4%)</div>
+      </div>
+    </div>
+
+    <!-- Mutation steps -->
+    <div>
+      <div class="sec-label">Mutation Pipeline (2 steps)</div>
+      <div class="steps-wrap">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-rule">strip-system-reminder</div>
+            <div class="step-op">strip_tag · &lt;system-reminder&gt; · applied to messages[0] · 4 blocks removed</div>
+          </div>
+          <div class="step-tokens">−28k</div>
+          <div class="step-priority">p:10</div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-rule">truncate-git-diff</div>
+            <div class="step-op">truncate_after · 8,000 chars · applied to messages[1], messages[3]</div>
+          </div>
+          <div class="step-tokens">−9k</div>
+          <div class="step-priority">p:20</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scalars changed -->
+    <div>
+      <div class="sec-label">Scalar Fields</div>
+      <div class="diff-block">
+        <table class="scalar-table">
+          <thead>
+            <tr>
+              <th>Field</th><th>Original</th><th></th><th>Final</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="field-name">model</span></td>
+              <td><span class="field-same">claude-sonnet-4-6</span></td>
+              <td>—</td>
+              <td><span class="field-same">claude-sonnet-4-6</span></td>
+            </tr>
+            <tr>
+              <td><span class="field-name">max_tokens</span></td>
+              <td><span class="field-same">32000</span></td>
+              <td>—</td>
+              <td><span class="field-same">32000</span></td>
+            </tr>
+            <tr>
+              <td><span class="field-name">thinking.type</span></td>
+              <td><span class="field-same">adaptive</span></td>
+              <td>—</td>
+              <td><span class="field-same">adaptive</span></td>
+            </tr>
+            <tr>
+              <td><span class="field-name">output_config.effort</span></td>
+              <td><span class="field-same">medium</span></td>
+              <td>—</td>
+              <td><span class="field-same">medium</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- System blocks diff -->
+    <div>
+      <div class="sec-label">System Blocks (3 blocks · 2 changed)</div>
+
+      <!-- Block 0: unchanged -->
+      <div class="diff-block">
+        <div class="diff-block-header">
+          <div class="diff-block-title">
+            system[0] · billing-header
+            <span class="diff-block-badge unchanged">unchanged</span>
+          </div>
+          <span class="diff-chevron">›</span>
+        </div>
+        <div class="diff-content collapsed">
+          <div class="diff-line ctx">x-anthropic-billing-header: cc_version=2.1.86.204; cc_entrypoint=cli; cch=ccc80;</div>
+        </div>
+      </div>
+
+      <!-- Block 1: modified (cache_control stripped) -->
+      <div class="diff-block">
+        <div class="diff-block-header">
+          <div class="diff-block-title">
+            system[1] · role identity
+            <span class="diff-block-badge modified">modified</span>
+          </div>
+          <span class="diff-chevron open">›</span>
+        </div>
+        <div class="diff-content">
+          <div class="diff-line ctx">type: text</div>
+          <div class="diff-line del">cache_control: {"type": "ephemeral"}</div>
+          <div class="diff-line add">cache_control: null  (stripped by rule: remove-cache-hints)</div>
+          <div class="diff-line ctx">text: "You are Claude Code, Anthropic's official CLI for Claude."</div>
+        </div>
+      </div>
+
+      <!-- Block 2: modified (text truncated) -->
+      <div class="diff-block">
+        <div class="diff-block-header">
+          <div class="diff-block-title">
+            system[2] · main instructions
+            <span class="diff-block-badge modified">modified</span>
+          </div>
+          <span class="diff-chevron open">›</span>
+        </div>
+        <div class="diff-content">
+          <div class="diff-line ctx">type: text</div>
+          <div class="diff-line del">text: "\nYou are an interactive agent that helps users with software</div>
+          <div class="diff-line del">  engineering tasks. Use the instructions below and the tools</div>
+          <div class="diff-line del">  available to you to assist the user.\n\nIMPORTANT: Assist with</div>
+          <div class="diff-line del">  authorized security testing, defensive security, CTF challenges...</div>
+          <div class="diff-line del">  [+2,100 more chars]"</div>
+          <div class="diff-line add">text: "\nYou are an interactive agent that helps users with software</div>
+          <div class="diff-line add">  engineering tasks." [truncated at 8,000 chars by truncate-git-diff]</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Messages diff -->
+    <div>
+      <div class="sec-label">Messages (1 message · 3 content blocks changed)</div>
+
+      <!-- messages[0] user, content block [0] removed -->
+      <div class="diff-block">
+        <div class="diff-block-header">
+          <div class="diff-block-title">
+            messages[0] · user · content[0]
+            <span class="diff-block-badge removed">removed</span>
+          </div>
+          <span class="diff-chevron open">›</span>
+        </div>
+        <div class="diff-content">
+          <div class="diff-line ctx">type: text</div>
+          <div class="diff-line del">text: "&lt;system-reminder&gt;</div>
+          <div class="diff-line del">  SessionStart hook additional context: &lt;EXTREMELY_IMPORTANT&gt;</div>
+          <div class="diff-line del">  You have superpowers...</div>
+          <div class="diff-line del">  [+4,200 chars]</div>
+          <div class="diff-line del">&lt;/system-reminder&gt;"</div>
+          <div class="diff-line add">text: ""  (empty — block stripped by strip-system-reminder)</div>
+        </div>
+      </div>
+
+      <!-- messages[0] user, content block [1] removed -->
+      <div class="diff-block">
+        <div class="diff-block-header">
+          <div class="diff-block-title">
+            messages[0] · user · content[1]
+            <span class="diff-block-badge removed">removed</span>
+          </div>
+          <span class="diff-chevron open">›</span>
+        </div>
+        <div class="diff-content">
+          <div class="diff-line ctx">type: text</div>
+          <div class="diff-line del">text: "&lt;system-reminder&gt;</div>
+          <div class="diff-line del">  The following skills are available for use with the Skill tool:</div>
+          <div class="diff-line del">  - update-config: Use this skill to configure...</div>
+          <div class="diff-line del">  [+3,100 chars]</div>
+          <div class="diff-line del">&lt;/system-reminder&gt;"</div>
+          <div class="diff-line add">text: ""  (empty — block stripped by strip-system-reminder)</div>
+        </div>
+      </div>
+
+      <!-- messages[0] user, content block [4] unchanged -->
+      <div class="diff-block">
+        <div class="diff-block-header">
+          <div class="diff-block-title">
+            messages[0] · user · content[4]
+            <span class="diff-block-badge unchanged">unchanged</span>
+          </div>
+          <span class="diff-chevron">›</span>
+        </div>
+        <div class="diff-content collapsed">
+          <div class="diff-line ctx">type: text</div>
+          <div class="diff-line ctx">text: "hi"</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tools (summary — individual tools unchanged in this trace) -->
+    <div>
+      <div class="sec-label">Tools (29 · no changes)</div>
+      <div class="diff-block">
+        <div class="diff-block-header">
+          <div class="diff-block-title">
+            tools[] — all 29 passed through unchanged
+            <span class="diff-block-badge unchanged">unchanged</span>
+          </div>
+          <span class="diff-chevron open">›</span>
+        </div>
+        <div class="diff-content" style="padding: 0; max-height: 160px;">
+          <div class="tool-item"><span class="tool-name">Agent</span><span class="tool-status present">present</span></div>
+          <div class="tool-item"><span class="tool-name">AskUserQuestion</span><span class="tool-status present">present</span></div>
+          <div class="tool-item"><span class="tool-name">Bash</span><span class="tool-status present">present</span></div>
+          <div class="tool-item"><span class="tool-name">Edit</span><span class="tool-status present">present</span></div>
+          <div class="tool-item"><span class="tool-name">Glob</span><span class="tool-status present">present</span></div>
+          <div class="tool-item"><span class="tool-name">Grep</span><span class="tool-status present">present</span></div>
+          <div class="tool-item"><span class="tool-name">Read</span><span class="tool-status present">present</span></div>
+          <div class="tool-item"><span class="tool-name">Write</span><span class="tool-status present">present</span></div>
+          <div class="tool-item" style="border:none; color: var(--text-dim); font-size:10px; font-family:var(--mono)">
+            + 21 more tools…
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Metadata -->
+    <div>
+      <div class="sec-label">Metadata</div>
+      <div class="diff-block">
+        <div class="diff-content" style="padding: 12px;">
+          <div class="diff-line ctx">user_id.device_id:   "1234"</div>
+          <div class="diff-line ctx">user_id.account_uuid: ""</div>
+          <div class="diff-line ctx">user_id.session_id:   "d024e4be-afdf-432c-9248-d3968302618d"</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- so-body -->
+</div><!-- slideover -->
+
+</body>
+</html>
